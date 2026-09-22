@@ -5,25 +5,25 @@ import { CreateIssueDto } from './dto/create-issue.dto.js';
 import { FindIssuesQueryDto } from './dto/find-issues-query.dto.js';
 import { IssuesService } from './issues.service.js';
 
-@Controller('projects/:projectId/issues')
-export class ProjectIssuesController {
+@Controller('lists/:listId/issues')
+export class ListIssuesController {
   constructor(private readonly issuesService: IssuesService) {}
 
   @Post()
   create(
-    @Param('projectId') projectId: string,
+    @Param('listId') listId: string,
     @Body() dto: CreateIssueDto,
     @CurrentUser() user: UserModel,
   ) {
-    return this.issuesService.create(projectId, dto, user.id);
+    return this.issuesService.create(listId, dto, user.id);
   }
 
   @Get()
   findAll(
-    @Param('projectId') projectId: string,
+    @Param('listId') listId: string,
     @Query() query: FindIssuesQueryDto,
     @CurrentUser() user: UserModel,
   ) {
-    return this.issuesService.findAllByProject(projectId, user.id, query);
+    return this.issuesService.findAllByList(listId, user.id, query);
   }
 }

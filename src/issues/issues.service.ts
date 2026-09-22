@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type { IssueModel } from '../generated/prisma/models.js';
+import { ListsService } from '../lists/lists.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { ProjectsService } from '../projects/projects.service.js';
 import type { CreateIssueDto } from './dto/create-issue.dto.js';
 import type { FindIssuesQueryDto } from './dto/find-issues-query.dto.js';
 import type { UpdateIssueDto } from './dto/update-issue.dto.js';
@@ -17,11 +17,11 @@ const ISSUE_INCLUDE = {
 export class IssuesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly projectsService: ProjectsService,
+    private readonly listsService: ListsService,
     private readonly issueHistory: IssueHistoryService,
   ) {}
 
-  /** Verifies the user has access to the issue (via its project's workspace) and returns it. */
+  /** Verifies the user has access to the issue (via its list's project/workspace) and returns it. */
   async verifyAccess(issueId: string, userId: string): Promise<IssueModel> {
     const issue = await this.prisma.issue.findUnique({
       where: { id: issueId },
@@ -31,19 +31,19 @@ export class IssuesService {
       throw new NotFoundException('Issue not found');
     }
 
-    await this.projectsService.verifyAccess(issue.project_id, userId);
+    await this.listsService.verifyAccess(issue.list_id, userId);
 
     return issue;
   }
 
-  async create(projectId: string, dto: CreateIssueDto, userId: string) {
-    await this.projectsService.verifyAccess(projectId, userId);
+  async create(listId: string, dto: CreateIssueDto, userId: string) {
+    await this.listsService.verifyAccess(listId, userId);
 
     const issue = await this.prisma.issue.create({
       data: {
         title: dto.title,
         description: dto.description,
-        project_id: projectId,
+        list_id: listId,
         severity: dto.severity,
         priority: dto.priority,
         reported_by: userId,
@@ -62,16 +62,16 @@ export class IssuesService {
     return issue;
   }
 
-  async findAllByProject(
-    projectId: string,
+  async findAllByList(
+    listId: string,
     userId: string,
     filters: FindIssuesQueryDto,
   ) {
-    await this.projectsService.verifyAccess(projectId, userId);
+    await this.listsService.verifyAccess(listId, userId);
 
     return this.prisma.issue.findMany({
       where: {
-        project_id: projectId,
+        list_id: listId,
         status: filters.status,
         severity: filters.severity,
         priority: filters.priority,
@@ -87,7 +87,7 @@ export class IssuesService {
       where: { id: issueId },
       include: {
         ...ISSUE_INCLUDE,
-        project: { include: { workspace: true } },
+        list: { include: { project: { include: { workspace: true } } } },
         history: {
           include: { changer: true },
           orderBy: { changed_at: 'desc' },
@@ -99,7 +99,7 @@ export class IssuesService {
       throw new NotFoundException('Issue not found');
     }
 
-    await this.projectsService.verifyAccess(issue.project_id, userId);
+    await this.listsService.verifyAccess(issue.list_id, userId);
 
     return issue;
   }

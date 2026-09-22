@@ -7,6 +7,7 @@ import { AttachmentsModule } from './attachments/attachments.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtGuard } from './common/guards/jwt.guard.js';
 import { IssuesModule } from './issues/issues.module.js';
+import { ListsModule } from './lists/lists.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
 import { SupabaseModule } from './supabase/supabase.module.js';
@@ -25,6 +26,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module.js';
     UsersModule,
     WorkspacesModule,
     ProjectsModule,
+    ListsModule,
     IssuesModule,
     AttachmentsModule,
   ],

@@ -84,7 +84,7 @@ model Project {
 
   workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
   creator   User      @relation("ProjectCreator", fields: [created_by], references: [id], onDelete: Restrict)
-  issues    Issue[]
+  lists     List[]
 
   @@index([workspace_id])
   @@index([created_by])
@@ -92,13 +92,32 @@ model Project {
 }
 
 // ============================================================================
-// ISSUES (Bugs/Tasks) - Core entity
+// LISTS - Sits between Project and Issue (Workspace -> Project -> List -> Issue)
+// type: bug, task, feature, backlog
+// ============================================================================
+model List {
+  id         String   @id @default(cuid())
+  name       String
+  type       String // bug, task, feature, backlog
+  project_id String
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  issues  Issue[]
+
+  @@index([project_id])
+  @@map("lists")
+}
+
+// ============================================================================
+// ISSUES (Bugs/Tasks) - Core entity, belongs to a List
 // ============================================================================
 model Issue {
   id          String   @id @default(cuid())
   title       String
   description String?  @db.Text
-  project_id  String
+  list_id     String
   status      String   @default("open") // open, in_progress, resolved, closed, wont_fix
   severity    String   @default("medium") // critical, high, medium, low
   priority    String   @default("medium") // high, medium, low
@@ -107,13 +126,13 @@ model Issue {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  project     Project        @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  list        List           @relation(fields: [list_id], references: [id], onDelete: Cascade)
   assignee    User?          @relation("IssueAssignee", fields: [assigned_to], references: [id], onDelete: SetNull)
   reporter    User           @relation("IssueReporter", fields: [reported_by], references: [id], onDelete: Restrict)
   attachments Attachment[]
   history     IssueHistory[]
 
-  @@index([project_id])
+  @@index([list_id])
   @@index([assigned_to])
   @@index([reported_by])
   @@map("issues")
