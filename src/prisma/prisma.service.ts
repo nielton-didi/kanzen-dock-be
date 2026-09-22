@@ -12,6 +12,12 @@ export class PrismaService
     super({
       adapter: new PrismaPg({
         connectionString: configService.getOrThrow<string>('DATABASE_URL'),
+        // Supabase's Postgres cert chain isn't in Node's default trust store,
+        // so verify against Supabase's own root CA instead.
+        ssl: {
+          ca: configService.getOrThrow<string>('SUPABASE_CA_CERT'),
+          rejectUnauthorized: true,
+        },
       }),
     });
   }
