@@ -10,6 +10,7 @@ import { IssuesModule } from './issues/issues.module.js';
 import { ListsModule } from './lists/lists.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
+import { StatusesModule } from './statuses/statuses.module.js';
 import { SupabaseModule } from './supabase/supabase.module.js';
 import { UsersModule } from './users/users.module.js';
 import { WorkspacesModule } from './workspaces/workspaces.module.js';
@@ -27,6 +28,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module.js';
     WorkspacesModule,
     ProjectsModule,
     ListsModule,
+    StatusesModule,
     IssuesModule,
     AttachmentsModule,
   ],
