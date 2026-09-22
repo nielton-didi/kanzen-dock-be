@@ -3,20 +3,29 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.util.js';
 import type { ListModel } from '../generated/prisma/models.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ProjectsService } from '../projects/projects.service.js';
+import { SupabaseService } from '../supabase/supabase.service.js';
 import { WorkspacesService } from '../workspaces/workspaces.service.js';
 import type { CreateListDto } from './dto/create-list.dto.js';
 import type { UpdateListDto } from './dto/update-list.dto.js';
 
 @Injectable()
 export class ListsService {
+  private readonly bucket: string;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly projectsService: ProjectsService,
     private readonly workspacesService: WorkspacesService,
-  ) {}
+    private readonly supabase: SupabaseService,
+    configService: ConfigService,
+  ) {
+    this.bucket = configService.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
+  }
 
   /** Verifies the user has access to the list (via its project's workspace) and returns it. */
   async verifyAccess(listId: string, userId: string): Promise<ListModel> {
@@ -64,6 +73,16 @@ export class ListsService {
   async remove(listId: string, userId: string) {
     const list = await this.findListOrThrow(listId);
     await this.verifyAdminAccess(list.project_id, userId);
+
+    const issues = await this.prisma.issue.findMany({
+      where: { list_id: listId },
+      select: { id: true },
+    });
+    await cleanupIssueStorageFiles(
+      this.supabase,
+      this.bucket,
+      issues.map((issue) => issue.id),
+    );
 
     await this.prisma.list.delete({ where: { id: listId } });
 

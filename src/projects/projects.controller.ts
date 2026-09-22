@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { UserModel } from '../generated/prisma/models.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
@@ -23,5 +23,13 @@ export class ProjectsController {
     @CurrentUser() user: UserModel,
   ) {
     return this.projectsService.findAllByWorkspace(workspaceId, user.id);
+  }
+
+  @Delete(':projectId')
+  remove(
+    @Param('projectId') projectId: string,
+    @CurrentUser() user: UserModel,
+  ) {
+    return this.projectsService.remove(projectId, user.id);
   }
 }

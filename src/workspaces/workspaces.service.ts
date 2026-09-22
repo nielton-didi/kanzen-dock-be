@@ -3,13 +3,24 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { SupabaseService } from '../supabase/supabase.service.js';
 import type { CreateWorkspaceDto } from './dto/create-workspace.dto.js';
 import type { InviteMemberDto } from './dto/invite-member.dto.js';
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly bucket: string;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly supabase: SupabaseService,
+    configService: ConfigService,
+  ) {
+    this.bucket = configService.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
+  }
 
   async create(dto: CreateWorkspaceDto, userId: string) {
     return this.prisma.workspace.create({
@@ -124,5 +135,27 @@ export class WorkspacesService {
     });
 
     return { message: 'Member removed successfully' };
+  }
+
+  async remove(workspaceId: string, userId: string) {
+    const workspace = await this.getWorkspace(workspaceId, userId);
+
+    if (workspace.owner_id !== userId) {
+      throw new ForbiddenException('Only the owner can delete a workspace');
+    }
+
+    const issues = await this.prisma.issue.findMany({
+      where: { list: { project: { workspace_id: workspaceId } } },
+      select: { id: true },
+    });
+    await cleanupIssueStorageFiles(
+      this.supabase,
+      this.bucket,
+      issues.map((issue) => issue.id),
+    );
+
+    await this.prisma.workspace.delete({ where: { id: workspaceId } });
+
+    return { message: 'Workspace deleted successfully' };
   }
 }

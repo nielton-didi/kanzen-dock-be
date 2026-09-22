@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { UserModel } from '../generated/prisma/models.js';
 import { UpdateIssueDto } from './dto/update-issue.dto.js';
@@ -28,5 +28,10 @@ export class IssuesController {
     @CurrentUser() user: UserModel,
   ) {
     return this.issuesService.getHistory(issueId, user.id);
+  }
+
+  @Delete(':issueId')
+  remove(@Param('issueId') issueId: string, @CurrentUser() user: UserModel) {
+    return this.issuesService.remove(issueId, user.id);
   }
 }

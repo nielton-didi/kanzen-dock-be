@@ -3,9 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.util.js';
 import type { IssueModel } from '../generated/prisma/models.js';
 import { ListsService } from '../lists/lists.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { SupabaseService } from '../supabase/supabase.service.js';
 import type { CreateIssueDto } from './dto/create-issue.dto.js';
 import type { FindIssuesQueryDto } from './dto/find-issues-query.dto.js';
 import type { UpdateIssueDto } from './dto/update-issue.dto.js';
@@ -19,11 +22,17 @@ const ISSUE_INCLUDE = {
 
 @Injectable()
 export class IssuesService {
+  private readonly bucket: string;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly listsService: ListsService,
     private readonly issueHistory: IssueHistoryService,
-  ) {}
+    private readonly supabase: SupabaseService,
+    configService: ConfigService,
+  ) {
+    this.bucket = configService.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
+  }
 
   /** Verifies the user has access to the issue (via its list's project/workspace) and returns it. */
   async verifyAccess(issueId: string, userId: string): Promise<IssueModel> {
@@ -182,5 +191,16 @@ export class IssuesService {
     await this.verifyAccess(issueId, userId);
 
     return this.issueHistory.getIssueHistory(issueId);
+  }
+
+  async remove(issueId: string, userId: string) {
+    await this.verifyAccess(issueId, userId);
+
+    await cleanupIssueStorageFiles(this.supabase, this.bucket, [issueId]);
+
+    // Cascades attachments and history rows in the DB (see schema onDelete: Cascade).
+    await this.prisma.issue.delete({ where: { id: issueId } });
+
+    return { message: 'Issue deleted successfully' };
   }
 }
