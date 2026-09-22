@@ -109,11 +109,13 @@ export class IssuesService {
     return this.prisma.issue.findMany({
       where: {
         list_id: listId,
-        type: filters.type,
-        status_id: filters.status_id,
-        severity: filters.severity,
-        priority: filters.priority,
-        assigned_to: filters.assigned_to,
+        type: filters.type?.length ? { in: filters.type } : undefined,
+        status_id: filters.status_id?.length ? { in: filters.status_id } : undefined,
+        severity: filters.severity?.length ? { in: filters.severity } : undefined,
+        priority: filters.priority?.length ? { in: filters.priority } : undefined,
+        assigned_to: filters.assigned_to?.length
+          ? { in: filters.assigned_to }
+          : undefined,
       },
       include: ISSUE_INCLUDE,
       orderBy: { created_at: 'desc' },
