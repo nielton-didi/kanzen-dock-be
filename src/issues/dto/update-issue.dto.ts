@@ -6,6 +6,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 
+const TYPES = ['bug', 'task'] as const;
 const STATUSES = [
   'open',
   'in_progress',
@@ -27,9 +28,14 @@ export class UpdateIssueDto {
   description?: string;
 
   @IsOptional()
+  @IsIn(TYPES)
+  type?: (typeof TYPES)[number];
+
+  @IsOptional()
   @IsIn(STATUSES)
   status?: (typeof STATUSES)[number];
 
+  /** Only allowed when the issue's (possibly just-updated) type is "bug" — enforced in IssuesService. */
   @IsOptional()
   @IsIn(SEVERITIES)
   severity?: (typeof SEVERITIES)[number];

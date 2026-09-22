@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { IssueModel } from '../generated/prisma/models.js';
 import { ListsService } from '../lists/lists.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -39,11 +43,16 @@ export class IssuesService {
   async create(listId: string, dto: CreateIssueDto, userId: string) {
     await this.listsService.verifyAccess(listId, userId);
 
+    if (dto.severity !== undefined && dto.type !== 'bug') {
+      throw new BadRequestException('severity is only allowed on bug issues');
+    }
+
     const issue = await this.prisma.issue.create({
       data: {
         title: dto.title,
         description: dto.description,
         list_id: listId,
+        type: dto.type,
         severity: dto.severity,
         priority: dto.priority,
         reported_by: userId,
@@ -72,6 +81,7 @@ export class IssuesService {
     return this.prisma.issue.findMany({
       where: {
         list_id: listId,
+        type: filters.type,
         status: filters.status,
         severity: filters.severity,
         priority: filters.priority,
@@ -107,11 +117,17 @@ export class IssuesService {
   async update(issueId: string, dto: UpdateIssueDto, userId: string) {
     const issue = await this.verifyAccess(issueId, userId);
 
+    const effectiveType = dto.type ?? issue.type;
+    if (dto.severity !== undefined && effectiveType !== 'bug') {
+      throw new BadRequestException('severity is only allowed on bug issues');
+    }
+
     const fieldsToUpdate: Record<string, string | null> = {};
 
     const trackableFields = [
       'title',
       'description',
+      'type',
       'status',
       'priority',
       'severity',
@@ -130,6 +146,22 @@ export class IssuesService {
         );
         fieldsToUpdate[field] = newValue;
       }
+    }
+
+    // Moving an issue away from "bug" clears any severity it was carrying.
+    if (
+      effectiveType !== 'bug' &&
+      issue.severity !== null &&
+      dto.severity === undefined
+    ) {
+      await this.issueHistory.logChange(
+        issueId,
+        'severity',
+        issue.severity,
+        null,
+        userId,
+      );
+      fieldsToUpdate.severity = null;
     }
 
     if (Object.keys(fieldsToUpdate).length === 0) {

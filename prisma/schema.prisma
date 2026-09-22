@@ -93,12 +93,11 @@ model Project {
 
 // ============================================================================
 // LISTS - Sits between Project and Issue (Workspace -> Project -> List -> Issue)
-// type: bug, task, feature, backlog
+// A list is a plain container; issues carry their own type (bug/task).
 // ============================================================================
 model List {
   id         String   @id @default(cuid())
   name       String
-  type       String // bug, task, feature, backlog
   project_id String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
@@ -118,8 +117,9 @@ model Issue {
   title       String
   description String?  @db.Text
   list_id     String
+  type        String // bug, task
   status      String   @default("open") // open, in_progress, resolved, closed, wont_fix
-  severity    String   @default("medium") // critical, high, medium, low
+  severity    String? // critical, high, medium, low — only set when type is "bug"
   priority    String   @default("medium") // high, medium, low
   assigned_to String?
   reported_by String
@@ -165,7 +165,7 @@ model Attachment {
 model IssueHistory {
   id         String   @id @default(cuid())
   issue_id   String
-  field_name String // title, description, status, priority, assigned_to, severity
+  field_name String // title, description, status, priority, assigned_to, severity, type
   old_value  String?  @db.Text
   new_value  String?  @db.Text
   changed_by String

@@ -6,6 +6,7 @@ import {
   MaxLength,
 } from 'class-validator';
 
+const TYPES = ['bug', 'task'] as const;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
 const PRIORITIES = ['high', 'medium', 'low'] as const;
 
@@ -19,6 +20,10 @@ export class CreateIssueDto {
   @IsString()
   description?: string;
 
+  @IsIn(TYPES)
+  type!: (typeof TYPES)[number];
+
+  /** Only allowed when type is "bug" — enforced in IssuesService. */
   @IsOptional()
   @IsIn(SEVERITIES)
   severity?: (typeof SEVERITIES)[number];

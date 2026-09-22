@@ -33,7 +33,6 @@ export class ListsService {
     return this.prisma.list.create({
       data: {
         name: dto.name,
-        type: dto.type,
         project_id: projectId,
       },
     });
