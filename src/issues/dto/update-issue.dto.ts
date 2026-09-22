@@ -1,5 +1,6 @@
 import {
   IsIn,
+  IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
@@ -7,13 +8,6 @@ import {
 } from 'class-validator';
 
 const TYPES = ['bug', 'task'] as const;
-const STATUSES = [
-  'open',
-  'in_progress',
-  'resolved',
-  'closed',
-  'wont_fix',
-] as const;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
 const PRIORITIES = ['high', 'medium', 'low'] as const;
 
@@ -31,9 +25,11 @@ export class UpdateIssueDto {
   @IsIn(TYPES)
   type?: (typeof TYPES)[number];
 
+  /** Must belong to the issue's list — checked in IssuesService, not here (a fixed @IsIn can't validate per-list values). */
   @IsOptional()
-  @IsIn(STATUSES)
-  status?: (typeof STATUSES)[number];
+  @IsString()
+  @IsNotEmpty()
+  status_id?: string;
 
   /** Only allowed when the issue's (possibly just-updated) type is "bug" — enforced in IssuesService. */
   @IsOptional()
