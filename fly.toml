@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for kanzen-dock-be on 2026-09-22T17:32:28+08:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'kanzen-dock-be'
+primary_region = 'sin'
+
+[build]
+[deploy]
+  release_command = 'npm run db:migrate:deploy'
+
+[env]
+  NODE_ENV = 'production'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ['app']
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512
