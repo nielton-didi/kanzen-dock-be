@@ -8,6 +8,7 @@ import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.u
 import type { IssueModel } from '../generated/prisma/models.js';
 import { ListsService } from '../lists/lists.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { StatusesService } from '../statuses/statuses.service.js';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import type { CreateIssueDto } from './dto/create-issue.dto.js';
 import type { FindIssuesQueryDto } from './dto/find-issues-query.dto.js';
@@ -15,6 +16,7 @@ import type { UpdateIssueDto } from './dto/update-issue.dto.js';
 import { IssueHistoryService } from './issue-history.service.js';
 
 const ISSUE_INCLUDE = {
+  status: true,
   assignee: true,
   reporter: true,
   attachments: true,
@@ -27,6 +29,7 @@ export class IssuesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly listsService: ListsService,
+    private readonly statusesService: StatusesService,
     private readonly issueHistory: IssueHistoryService,
     private readonly supabase: SupabaseService,
     configService: ConfigService,
@@ -56,12 +59,28 @@ export class IssuesService {
       throw new BadRequestException('severity is only allowed on bug issues');
     }
 
+    let statusId: string;
+    if (dto.status_id !== undefined) {
+      const status = await this.prisma.status.findUnique({
+        where: { id: dto.status_id },
+      });
+      if (!status || status.list_id !== listId) {
+        throw new BadRequestException(
+          'status_id must be a status belonging to this list',
+        );
+      }
+      statusId = status.id;
+    } else {
+      statusId = (await this.statusesService.getDefaultForList(listId)).id;
+    }
+
     const issue = await this.prisma.issue.create({
       data: {
         title: dto.title,
         description: dto.description,
         list_id: listId,
         type: dto.type,
+        status_id: statusId,
         severity: dto.severity,
         priority: dto.priority,
         reported_by: userId,
@@ -91,7 +110,7 @@ export class IssuesService {
       where: {
         list_id: listId,
         type: filters.type,
-        status: filters.status,
+        status_id: filters.status_id,
         severity: filters.severity,
         priority: filters.priority,
         assigned_to: filters.assigned_to,
@@ -137,7 +156,6 @@ export class IssuesService {
       'title',
       'description',
       'type',
-      'status',
       'priority',
       'severity',
       'assigned_to',
@@ -155,6 +173,29 @@ export class IssuesService {
         );
         fieldsToUpdate[field] = newValue;
       }
+    }
+
+    // status is tracked by id but logged by name (history stores plain-text labels, not ids).
+    if (dto.status_id !== undefined && dto.status_id !== issue.status_id) {
+      const [oldStatus, newStatus] = await Promise.all([
+        this.prisma.status.findUnique({ where: { id: issue.status_id } }),
+        this.prisma.status.findUnique({ where: { id: dto.status_id } }),
+      ]);
+
+      if (!newStatus || newStatus.list_id !== issue.list_id) {
+        throw new BadRequestException(
+          'status_id must be a status belonging to this issue’s list',
+        );
+      }
+
+      await this.issueHistory.logChange(
+        issueId,
+        'status',
+        oldStatus?.name ?? null,
+        newStatus.name,
+        userId,
+      );
+      fieldsToUpdate.status_id = dto.status_id;
     }
 
     // Moving an issue away from "bug" clears any severity it was carrying.

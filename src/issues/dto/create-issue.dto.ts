@@ -31,4 +31,10 @@ export class CreateIssueDto {
   @IsOptional()
   @IsIn(PRIORITIES)
   priority?: (typeof PRIORITIES)[number];
+
+  /** Defaults to the list's default status when omitted — checked in IssuesService (a fixed @IsIn can't validate per-list values). */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  status_id?: string;
 }

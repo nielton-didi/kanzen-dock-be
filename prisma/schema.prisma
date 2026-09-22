@@ -102,11 +102,45 @@ model List {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  issues  Issue[]
+  project  Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  issues   Issue[]
+  statuses Status[]
 
   @@index([project_id])
   @@map("lists")
+}
+
+// ============================================================================
+// STATUSES - Per-list, user-customizable issue statuses, grouped into 4 fixed
+// categories. Category is a real enum (unlike everything else in this schema)
+// because it is genuinely fixed and must never be user-editable; name/color
+// stay String since those ARE user-editable. Ordering within a list is
+// (category, position) — category sorts by declaration order in Postgres.
+// ============================================================================
+enum StatusCategory {
+  not_started
+  active
+  done
+  closed
+}
+
+model Status {
+  id         String         @id @default(cuid())
+  list_id    String
+  name       String
+  color      String // key into the fixed frontend palette, e.g. "blue", "red"
+  category   StatusCategory
+  position   Int // ordering within (list_id, category)
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+
+  list   List    @relation(fields: [list_id], references: [id], onDelete: Cascade)
+  issues Issue[]
+
+  @@unique([list_id, category, position])
+  @@unique([list_id, name])
+  @@index([list_id])
+  @@map("statuses")
 }
 
 // ============================================================================
@@ -118,7 +152,7 @@ model Issue {
   description String?  @db.Text
   list_id     String
   type        String // bug, task
-  status      String   @default("open") // open, in_progress, resolved, closed, wont_fix
+  status_id   String
   severity    String? // critical, high, medium, low — only set when type is "bug"
   priority    String   @default("medium") // high, medium, low
   assigned_to String?
@@ -127,12 +161,14 @@ model Issue {
   updated_at  DateTime @updatedAt
 
   list        List           @relation(fields: [list_id], references: [id], onDelete: Cascade)
+  status      Status         @relation(fields: [status_id], references: [id], onDelete: Restrict)
   assignee    User?          @relation("IssueAssignee", fields: [assigned_to], references: [id], onDelete: SetNull)
   reporter    User           @relation("IssueReporter", fields: [reported_by], references: [id], onDelete: Restrict)
   attachments Attachment[]
   history     IssueHistory[]
 
   @@index([list_id])
+  @@index([status_id])
   @@index([assigned_to])
   @@index([reported_by])
   @@map("issues")

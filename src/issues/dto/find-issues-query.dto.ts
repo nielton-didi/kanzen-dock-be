@@ -1,13 +1,6 @@
 import { IsIn, IsOptional, IsString } from 'class-validator';
 
 const TYPES = ['bug', 'task'] as const;
-const STATUSES = [
-  'open',
-  'in_progress',
-  'resolved',
-  'closed',
-  'wont_fix',
-] as const;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
 const PRIORITIES = ['high', 'medium', 'low'] as const;
 
@@ -17,8 +10,8 @@ export class FindIssuesQueryDto {
   type?: (typeof TYPES)[number];
 
   @IsOptional()
-  @IsIn(STATUSES)
-  status?: (typeof STATUSES)[number];
+  @IsString()
+  status_id?: string;
 
   @IsOptional()
   @IsIn(SEVERITIES)
