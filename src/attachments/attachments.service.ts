@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IssuesService } from '../issues/issues.service.js';
+import { WorkItemsService } from '../work-items/work-items.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SupabaseService } from '../supabase/supabase.service.js';
 
@@ -15,20 +15,20 @@ export class AttachmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly supabase: SupabaseService,
-    private readonly issuesService: IssuesService,
+    private readonly workItemsService: WorkItemsService,
     configService: ConfigService,
   ) {
     this.bucket = configService.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
   }
 
   async uploadAttachment(
-    issueId: string,
+    workItemId: string,
     file: Express.Multer.File,
     userId: string,
   ) {
-    await this.issuesService.verifyAccess(issueId, userId);
+    await this.workItemsService.verifyAccess(workItemId, userId);
 
-    const storagePath = `issues/${issueId}/${Date.now()}-${file.originalname}`;
+    const storagePath = `work-items/${workItemId}/${Date.now()}-${file.originalname}`;
 
     const { error } = await this.supabase.adminClient.storage
       .from(this.bucket)
@@ -46,7 +46,7 @@ export class AttachmentsService {
 
     return this.prisma.attachment.create({
       data: {
-        issue_id: issueId,
+        work_item_id: workItemId,
         file_url: publicUrl,
         file_name: file.originalname,
         file_size: file.size,
@@ -57,11 +57,11 @@ export class AttachmentsService {
     });
   }
 
-  async getIssueAttachments(issueId: string, userId: string) {
-    await this.issuesService.verifyAccess(issueId, userId);
+  async getWorkItemAttachments(workItemId: string, userId: string) {
+    await this.workItemsService.verifyAccess(workItemId, userId);
 
     return this.prisma.attachment.findMany({
-      where: { issue_id: issueId },
+      where: { work_item_id: workItemId },
       include: { uploader: true },
       orderBy: { uploaded_at: 'desc' },
     });
@@ -76,7 +76,7 @@ export class AttachmentsService {
       throw new NotFoundException('Attachment not found');
     }
 
-    await this.issuesService.verifyAccess(attachment.issue_id, userId);
+    await this.workItemsService.verifyAccess(attachment.work_item_id, userId);
 
     const storagePath = this.extractStoragePath(attachment.file_url);
     if (storagePath) {

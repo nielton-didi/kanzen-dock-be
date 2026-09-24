@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
-import { IssuesModule } from '../issues/issues.module.js';
+import { WorkItemsModule } from '../work-items/work-items.module.js';
 import { AttachmentsController } from './attachments.controller.js';
 import { AttachmentsService } from './attachments.service.js';
-import { IssueAttachmentsController } from './issue-attachments.controller.js';
+import { WorkItemAttachmentsController } from './work-item-attachments.controller.js';
 
 @Module({
-  imports: [IssuesModule],
-  controllers: [IssueAttachmentsController, AttachmentsController],
+  imports: [WorkItemsModule],
+  controllers: [WorkItemAttachmentsController, AttachmentsController],
   providers: [AttachmentsService],
 })
 export class AttachmentsModule {}

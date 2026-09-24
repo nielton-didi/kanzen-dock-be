@@ -32,7 +32,7 @@ export class StatusesService {
     });
   }
 
-  /** First status in category+position order for a list — the default status for new issues. */
+  /** First status in category+position order for a list — the default status for new work items. */
   async getDefaultForList(listId: string): Promise<StatusModel> {
     const status = await this.prisma.status.findFirst({
       where: { list_id: listId },
@@ -153,11 +153,11 @@ export class StatusesService {
     const status = await this.findStatusOrThrow(statusId);
     await this.listsService.verifyListAdminAccess(status.list_id, userId);
 
-    const issueCount = await this.prisma.issue.count({
+    const workItemCount = await this.prisma.workItem.count({
       where: { status_id: statusId },
     });
 
-    if (issueCount === 0) {
+    if (workItemCount === 0) {
       const totalInList = await this.prisma.status.count({
         where: { list_id: status.list_id },
       });
@@ -171,8 +171,8 @@ export class StatusesService {
 
     if (!dto.reassign_to_status_id) {
       throw new ConflictException({
-        message: `${issueCount} issue(s) use this status`,
-        issuesCount: issueCount,
+        message: `${workItemCount} work item(s) use this status`,
+        workItemsCount: workItemCount,
       });
     }
 
@@ -190,7 +190,7 @@ export class StatusesService {
     }
 
     await this.prisma.$transaction([
-      this.prisma.issue.updateMany({
+      this.prisma.workItem.updateMany({
         where: { status_id: statusId },
         data: { status_id: dto.reassign_to_status_id },
       }),
