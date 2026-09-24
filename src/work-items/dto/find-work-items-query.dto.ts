@@ -1,9 +1,16 @@
 import { Transform } from 'class-transformer';
-import { IsArray, IsIn, IsOptional, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsISO8601,
+  IsIn,
+  IsOptional,
+  IsString,
+  Matches,
+} from 'class-validator';
+import { DATE_ONLY_PATTERN, PRIORITIES } from '../work-item-fields.const.js';
 
 const TYPES = ['bug', 'task'] as const;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
-const PRIORITIES = ['high', 'medium', 'low'] as const;
 
 // Query parsing gives a bare string for a single occurrence (`?type=bug`) and
 // an array for repeated ones (`?type=bug&type=task`) - normalize both to an
@@ -13,7 +20,7 @@ function toArray({ value }: { value: unknown }): unknown {
   return Array.isArray(value) ? value : [value];
 }
 
-export class FindIssuesQueryDto {
+export class FindWorkItemsQueryDto {
   @IsOptional()
   @Transform(toArray)
   @IsArray()
@@ -43,4 +50,16 @@ export class FindIssuesQueryDto {
   @IsArray()
   @IsString({ each: true })
   assigned_to?: string[];
+
+  /** Inclusive lower bound on due_date (`YYYY-MM-DD`); excludes work items with no due date. */
+  @IsOptional()
+  @Matches(DATE_ONLY_PATTERN, { message: '$property must be a YYYY-MM-DD date' })
+  @IsISO8601({ strict: true })
+  due_from?: string;
+
+  /** Inclusive upper bound on due_date (`YYYY-MM-DD`); excludes work items with no due date. */
+  @IsOptional()
+  @Matches(DATE_ONLY_PATTERN, { message: '$property must be a YYYY-MM-DD date' })
+  @IsISO8601({ strict: true })
+  due_to?: string;
 }

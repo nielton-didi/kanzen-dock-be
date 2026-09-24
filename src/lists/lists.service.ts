@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.util.js';
+import { cleanupWorkItemStorageFiles } from '../attachments/cleanup-work-item-storage.util.js';
 import { DEFAULT_STATUSES } from './default-statuses.const.js';
 import type { ListModel } from '../generated/prisma/models.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -105,14 +105,14 @@ export class ListsService {
     const list = await this.findListOrThrow(listId);
     await this.verifyAdminAccess(list.project_id, userId);
 
-    const issues = await this.prisma.issue.findMany({
+    const workItems = await this.prisma.workItem.findMany({
       where: { list_id: listId },
       select: { id: true },
     });
-    await cleanupIssueStorageFiles(
+    await cleanupWorkItemStorageFiles(
       this.supabase,
       this.bucket,
-      issues.map((issue) => issue.id),
+      workItems.map((workItem) => workItem.id),
     );
 
     await this.prisma.list.delete({ where: { id: listId } });

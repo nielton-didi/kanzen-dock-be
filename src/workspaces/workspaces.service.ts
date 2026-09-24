@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.util.js';
+import { cleanupWorkItemStorageFiles } from '../attachments/cleanup-work-item-storage.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SupabaseService } from '../supabase/supabase.service.js';
 import type { CreateWorkspaceDto } from './dto/create-workspace.dto.js';
@@ -144,14 +144,14 @@ export class WorkspacesService {
       throw new ForbiddenException('Only the owner can delete a workspace');
     }
 
-    const issues = await this.prisma.issue.findMany({
+    const workItems = await this.prisma.workItem.findMany({
       where: { list: { project: { workspace_id: workspaceId } } },
       select: { id: true },
     });
-    await cleanupIssueStorageFiles(
+    await cleanupWorkItemStorageFiles(
       this.supabase,
       this.bucket,
-      issues.map((issue) => issue.id),
+      workItems.map((workItem) => workItem.id),
     );
 
     await this.prisma.workspace.delete({ where: { id: workspaceId } });
