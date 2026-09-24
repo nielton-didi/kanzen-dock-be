@@ -2,6 +2,7 @@ import {
   IsISO8601,
   IsIn,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -9,9 +10,6 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { DATE_ONLY_PATTERN, PRIORITIES } from '../work-item-fields.const.js';
-
-const TYPES = ['bug', 'task'] as const;
-const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
 
 export class CreateWorkItemDto {
   @IsString()
@@ -22,14 +20,6 @@ export class CreateWorkItemDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @IsIn(TYPES)
-  type!: (typeof TYPES)[number];
-
-  /** Only allowed when type is "bug" — enforced in WorkItemsService. */
-  @IsOptional()
-  @IsIn(SEVERITIES)
-  severity?: (typeof SEVERITIES)[number];
 
   @IsOptional()
   @IsIn(PRIORITIES)
@@ -54,4 +44,9 @@ export class CreateWorkItemDto {
   @IsString()
   @IsNotEmpty()
   status_id?: string;
+
+  /** Values keyed by custom field id; `null` unsets. Validated against the list's fields in custom-field-values.ts. */
+  @IsOptional()
+  @IsObject()
+  custom_fields?: Record<string, unknown>;
 }
