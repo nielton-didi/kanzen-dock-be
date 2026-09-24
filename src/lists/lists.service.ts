@@ -10,6 +10,7 @@ import type { ListModel } from '../generated/prisma/models.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { SupabaseService } from '../supabase/supabase.service.js';
+import { canManageList } from '../workspaces/workspace-roles.js';
 import { WorkspacesService } from '../workspaces/workspaces.service.js';
 import type { CreateListDto } from './dto/create-list.dto.js';
 import type { UpdateListDto } from './dto/update-list.dto.js';
@@ -42,8 +43,9 @@ export class ListsService {
     return list;
   }
 
+  /** Any workspace member can create a list; they then manage it (§6.5). */
   async create(projectId: string, dto: CreateListDto, userId: string) {
-    await this.verifyAdminAccess(projectId, userId);
+    await this.projectsService.verifyAccess(projectId, userId);
 
     // The DTO already rejects unknown keys; this guards other callers.
     const templateKey = dto.template_key ?? DEFAULT_TEMPLATE_KEY;
@@ -60,6 +62,7 @@ export class ListsService {
         data: {
           name: dto.name,
           project_id: projectId,
+          created_by: userId,
         },
       });
 
@@ -91,16 +94,15 @@ export class ListsService {
   }
 
   async update(listId: string, dto: UpdateListDto, userId: string) {
-    const list = await this.findListOrThrow(listId);
-    await this.verifyAdminAccess(list.project_id, userId);
+    const list = await this.verifyListManageAccess(listId, userId);
 
     if (dto.project_id && dto.project_id !== list.project_id) {
+      // Anyone who can manage the list may move it within its workspace
+      // (members can create lists in any project).
       const destination = await this.projectsService.verifyAccess(
         dto.project_id,
         userId,
       );
-      await this.verifyAdminAccess(dto.project_id, userId);
-
       const currentProject = await this.projectsService.verifyAccess(
         list.project_id,
         userId,
@@ -119,8 +121,7 @@ export class ListsService {
   }
 
   async remove(listId: string, userId: string) {
-    const list = await this.findListOrThrow(listId);
-    await this.verifyAdminAccess(list.project_id, userId);
+    await this.verifyListManageAccess(listId, userId);
 
     const workItems = await this.prisma.workItem.findMany({
       where: { list_id: listId },
@@ -137,13 +138,29 @@ export class ListsService {
     return { message: 'List deleted successfully' };
   }
 
-  /** Verifies the user is workspace owner/admin for the list's project, and returns the list. */
-  async verifyListAdminAccess(
+  /**
+   * Verifies the user may manage the list (rename, move, delete, statuses,
+   * fields): workspace owner/admin, or the member who created it. Returns the list.
+   */
+  async verifyListManageAccess(
     listId: string,
     userId: string,
   ): Promise<ListModel> {
     const list = await this.findListOrThrow(listId);
-    await this.verifyAdminAccess(list.project_id, userId);
+    const project = await this.projectsService.verifyAccess(
+      list.project_id,
+      userId,
+    );
+    const { role } = await this.workspacesService.getRole(
+      project.workspace_id,
+      userId,
+    );
+
+    if (!canManageList(role, userId, list.created_by)) {
+      throw new ForbiddenException(
+        'Only owner/admin or the list creator can manage this list',
+      );
+    }
 
     return list;
   }
@@ -156,19 +173,5 @@ export class ListsService {
     }
 
     return list;
-  }
-
-  /** Verifies the user is workspace owner/admin for the project's workspace. */
-  async verifyAdminAccess(projectId: string, userId: string) {
-    const project = await this.projectsService.verifyAccess(projectId, userId);
-    const workspace = await this.workspacesService.getWorkspace(
-      project.workspace_id,
-      userId,
-    );
-
-    const member = workspace.members.find((m) => m.user_id === userId);
-    if (!member || !['owner', 'admin'].includes(member.role)) {
-      throw new ForbiddenException('Only owner/admin can manage lists');
-    }
   }
 }

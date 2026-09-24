@@ -191,6 +191,10 @@ export class WorkItemsService {
       ? await this.customFieldsService.validatePatch(workItem.list_id, dto.custom_fields)
       : undefined;
 
+    if (dto.assigned_to && dto.assigned_to !== workItem.assigned_to) {
+      await this.assertWorkspaceMember(workItem.list_id, dto.assigned_to);
+    }
+
     const fieldsToUpdate: Record<string, string | Date | null> = {};
     // Written in the same transaction as the update, so history never records a change that didn't apply.
     const history: HistoryEntry[] = [];
@@ -281,6 +285,22 @@ export class WorkItemsService {
         include: WORK_ITEM_INCLUDE,
       });
     });
+  }
+
+  /** Assignees must belong to the list's workspace (ACCT-06). */
+  private async assertWorkspaceMember(listId: string, userId: string) {
+    const member = await this.prisma.workspaceMember.findFirst({
+      where: {
+        user_id: userId,
+        workspace: { projects: { some: { lists: { some: { id: listId } } } } },
+      },
+      select: { id: true },
+    });
+    if (!member) {
+      throw new BadRequestException(
+        'assigned_to must be a member of this workspace',
+      );
+    }
   }
 
   async getHistory(workItemId: string, userId: string) {

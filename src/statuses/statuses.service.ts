@@ -47,7 +47,7 @@ export class StatusesService {
   }
 
   async create(listId: string, dto: CreateStatusDto, userId: string) {
-    await this.listsService.verifyListAdminAccess(listId, userId);
+    await this.listsService.verifyListManageAccess(listId, userId);
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.status.findMany({ where: { list_id: listId } });
@@ -76,7 +76,7 @@ export class StatusesService {
 
   async update(statusId: string, dto: UpdateStatusDto, userId: string) {
     const status = await this.findStatusOrThrow(statusId);
-    await this.listsService.verifyListAdminAccess(status.list_id, userId);
+    await this.listsService.verifyListManageAccess(status.list_id, userId);
 
     if (dto.name) {
       const duplicate = await this.prisma.status.findFirst({
@@ -97,7 +97,7 @@ export class StatusesService {
 
   /** Drives both same-category drag-reorder and cross-category moves from one grouped payload. */
   async reorder(listId: string, dto: ReorderStatusesDto, userId: string) {
-    await this.listsService.verifyListAdminAccess(listId, userId);
+    await this.listsService.verifyListManageAccess(listId, userId);
 
     const grouped: Record<StatusCategory, string[]> = {
       not_started: dto.not_started,
@@ -151,7 +151,7 @@ export class StatusesService {
 
   async remove(statusId: string, dto: DeleteStatusDto, userId: string) {
     const status = await this.findStatusOrThrow(statusId);
-    await this.listsService.verifyListAdminAccess(status.list_id, userId);
+    await this.listsService.verifyListManageAccess(status.list_id, userId);
 
     const workItemCount = await this.prisma.workItem.count({
       where: { status_id: statusId },

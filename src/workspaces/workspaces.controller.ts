@@ -1,13 +1,27 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { UserModel } from '../generated/prisma/models.js';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto.js';
-import { InviteMemberDto } from './dto/invite-member.dto.js';
+import { TransferOwnershipDto } from './dto/transfer-ownership.dto.js';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto.js';
+import { MembersService } from './members.service.js';
 import { WorkspacesService } from './workspaces.service.js';
 
 @Controller('workspaces')
 export class WorkspacesController {
-  constructor(private readonly workspacesService: WorkspacesService) {}
+  constructor(
+    private readonly workspacesService: WorkspacesService,
+    private readonly membersService: MembersService,
+  ) {}
 
   @Post()
   create(@Body() dto: CreateWorkspaceDto, @CurrentUser() user: UserModel) {
@@ -27,22 +41,36 @@ export class WorkspacesController {
     return this.workspacesService.getWorkspace(workspaceId, user.id);
   }
 
-  @Post(':workspaceId/invite')
-  inviteMember(
+  @Patch(':workspaceId')
+  rename(
     @Param('workspaceId') workspaceId: string,
-    @Body() dto: InviteMemberDto,
+    @Body() dto: UpdateWorkspaceDto,
     @CurrentUser() user: UserModel,
   ) {
-    return this.workspacesService.inviteMember(workspaceId, dto, user.id);
+    return this.workspacesService.rename(workspaceId, dto, user.id);
   }
 
-  @Delete(':workspaceId/members/:memberId')
-  removeMember(
+  @HttpCode(200)
+  @Post(':workspaceId/leave')
+  leave(
     @Param('workspaceId') workspaceId: string,
-    @Param('memberId') memberId: string,
     @CurrentUser() user: UserModel,
   ) {
-    return this.workspacesService.removeMember(workspaceId, memberId, user.id);
+    return this.membersService.leave(workspaceId, user.id);
+  }
+
+  @HttpCode(200)
+  @Post(':workspaceId/transfer-ownership')
+  transferOwnership(
+    @Param('workspaceId') workspaceId: string,
+    @Body() dto: TransferOwnershipDto,
+    @CurrentUser() user: UserModel,
+  ) {
+    return this.workspacesService.transferOwnership(
+      workspaceId,
+      dto.user_id,
+      user.id,
+    );
   }
 
   @Delete(':workspaceId')

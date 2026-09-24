@@ -43,7 +43,7 @@ export class CustomFieldsService {
   }
 
   async create(listId: string, dto: CreateFieldDefinitionDto, userId: string) {
-    await this.listsService.verifyListAdminAccess(listId, userId);
+    await this.listsService.verifyListManageAccess(listId, userId);
 
     const name = dto.name.trim();
     const options = buildOptions(dto.kind, dto.options);
@@ -67,7 +67,7 @@ export class CustomFieldsService {
 
   async update(fieldId: string, dto: UpdateFieldDefinitionDto, userId: string) {
     const field = await this.findFieldOrThrow(fieldId);
-    await this.listsService.verifyListAdminAccess(field.list_id, userId);
+    await this.listsService.verifyListManageAccess(field.list_id, userId);
 
     const name = dto.name?.trim();
     if (name && name !== field.name) {
@@ -94,7 +94,7 @@ export class CustomFieldsService {
     dto: ReorderFieldDefinitionsDto,
     userId: string,
   ) {
-    await this.listsService.verifyListAdminAccess(listId, userId);
+    await this.listsService.verifyListManageAccess(listId, userId);
 
     const existing = await this.prisma.fieldDefinition.findMany({
       where: { list_id: listId, deleted_at: null },
@@ -128,7 +128,7 @@ export class CustomFieldsService {
 
   async remove(fieldId: string, userId: string) {
     const field = await this.findFieldOrThrow(fieldId);
-    await this.listsService.verifyListAdminAccess(field.list_id, userId);
+    await this.listsService.verifyListManageAccess(field.list_id, userId);
 
     // Soft delete (D2): values stay in work items' custom_fields so a restore
     // brings them back. Until then the field is unknown to writes and filters,
@@ -149,7 +149,7 @@ export class CustomFieldsService {
     if (!field || field.deleted_at === null) {
       throw new NotFoundException('Deleted field not found');
     }
-    await this.listsService.verifyListAdminAccess(field.list_id, userId);
+    await this.listsService.verifyListManageAccess(field.list_id, userId);
 
     await this.assertNameAvailable(
       field.list_id,

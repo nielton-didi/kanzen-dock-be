@@ -30,6 +30,8 @@ model User {
   attachments            Attachment[]
   work_item_history_logs WorkItemHistory[]
   list_preferences       ListUserPreference[]
+  created_lists          List[]               @relation("ListCreator")
+  sent_invites           WorkspaceInvite[]    @relation("InviteSender")
 
   @@map("users")
 }
@@ -46,6 +48,7 @@ model Workspace {
 
   owner    User              @relation("WorkspaceOwner", fields: [owner_id], references: [id], onDelete: Cascade)
   members  WorkspaceMember[]
+  invites  WorkspaceInvite[]
   projects Project[]
 
   @@index([owner_id])
@@ -71,6 +74,30 @@ model WorkspaceMember {
   @@index([workspace_id])
   @@index([user_id])
   @@map("workspace_members")
+}
+
+// ============================================================================
+// WORKSPACE_INVITES - Pending invites by email (COLLAB-01)
+// One row per pending invite; accepting, declining or revoking deletes it.
+// Only the SHA-256 of the link token is stored; the raw token is returned once
+// (on create/resend). Acceptance requires being logged in as `email`.
+// ============================================================================
+model WorkspaceInvite {
+  id           String   @id @default(cuid())
+  workspace_id String
+  email        String // lowercased
+  role         String   @default("member") // "admin" | "member"
+  token_hash   String   @unique
+  invited_by   String?
+  created_at   DateTime @default(now())
+  expires_at   DateTime
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  inviter   User?     @relation("InviteSender", fields: [invited_by], references: [id], onDelete: SetNull)
+
+  @@unique([workspace_id, email])
+  @@index([email])
+  @@map("workspace_invites")
 }
 
 // ============================================================================
@@ -101,16 +128,21 @@ model List {
   id         String   @id @default(cuid())
   name       String
   project_id String
+  // The member who created the list manages it like an admin. Passes to the
+  // workspace owner when that member leaves or is removed.
+  created_by String?
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
   project          Project              @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  creator          User?                @relation("ListCreator", fields: [created_by], references: [id], onDelete: SetNull)
   work_items       WorkItem[]
   statuses         Status[]
   fields           FieldDefinition[]
   user_preferences ListUserPreference[]
 
   @@index([project_id])
+  @@index([created_by])
   @@map("lists")
 }
 

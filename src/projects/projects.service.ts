@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { cleanupWorkItemStorageFiles } from '../attachments/cleanup-work-item-storage.util.js';
 import type { ProjectModel } from '../generated/prisma/models.js';
@@ -39,8 +35,13 @@ export class ProjectsService {
     return project;
   }
 
+  /** Projects are workspace structure: owner/admin only (§6.5). Members create lists. */
   async create(workspaceId: string, dto: CreateProjectDto, userId: string) {
-    await this.workspacesService.getWorkspace(workspaceId, userId);
+    await this.workspacesService.requireAdmin(
+      workspaceId,
+      userId,
+      'Only owner/admin can create a project',
+    );
 
     return this.prisma.project.create({
       data: {
@@ -64,7 +65,11 @@ export class ProjectsService {
 
   async remove(projectId: string, userId: string) {
     const project = await this.verifyAccess(projectId, userId);
-    await this.verifyAdminAccess(project.workspace_id, userId);
+    await this.workspacesService.requireAdmin(
+      project.workspace_id,
+      userId,
+      'Only owner/admin can delete a project',
+    );
 
     const workItems = await this.prisma.workItem.findMany({
       where: { list: { project_id: projectId } },
@@ -79,18 +84,5 @@ export class ProjectsService {
     await this.prisma.project.delete({ where: { id: projectId } });
 
     return { message: 'Project deleted successfully' };
-  }
-
-  /** Verifies the user is workspace owner/admin. */
-  private async verifyAdminAccess(workspaceId: string, userId: string) {
-    const workspace = await this.workspacesService.getWorkspace(
-      workspaceId,
-      userId,
-    );
-
-    const member = workspace.members.find((m) => m.user_id === userId);
-    if (!member || !['owner', 'admin'].includes(member.role)) {
-      throw new ForbiddenException('Only owner/admin can delete a project');
-    }
   }
 }
