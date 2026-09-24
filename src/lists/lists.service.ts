@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { cleanupWorkItemStorageFiles } from '../attachments/cleanup-work-item-storage.util.js';
-import { DEFAULT_STATUSES } from './default-statuses.const.js';
 import type { ListModel } from '../generated/prisma/models.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ProjectsService } from '../projects/projects.service.js';
@@ -14,6 +13,11 @@ import { SupabaseService } from '../supabase/supabase.service.js';
 import { WorkspacesService } from '../workspaces/workspaces.service.js';
 import type { CreateListDto } from './dto/create-list.dto.js';
 import type { UpdateListDto } from './dto/update-list.dto.js';
+import {
+  DEFAULT_TEMPLATE_KEY,
+  findListTemplate,
+  templateRows,
+} from './list-templates.const.js';
 
 @Injectable()
 export class ListsService {
@@ -41,6 +45,16 @@ export class ListsService {
   async create(projectId: string, dto: CreateListDto, userId: string) {
     await this.verifyAdminAccess(projectId, userId);
 
+    // The DTO already rejects unknown keys; this guards other callers.
+    const templateKey = dto.template_key ?? DEFAULT_TEMPLATE_KEY;
+    const template = findListTemplate(templateKey);
+    if (!template) {
+      throw new BadRequestException(`Unknown list template "${templateKey}"`);
+    }
+    const { statuses, fields } = templateRows(template);
+
+    // Copy-on-create (D3): the list gets its own statuses and fields, with no
+    // link back to the template.
     return this.prisma.$transaction(async (tx) => {
       const list = await tx.list.create({
         data: {
@@ -50,11 +64,14 @@ export class ListsService {
       });
 
       await tx.status.createMany({
-        data: DEFAULT_STATUSES.map((status) => ({
-          ...status,
-          list_id: list.id,
-        })),
+        data: statuses.map((status) => ({ ...status, list_id: list.id })),
       });
+
+      if (fields.length) {
+        await tx.fieldDefinition.createMany({
+          data: fields.map((field) => ({ ...field, list_id: list.id })),
+        });
+      }
 
       return list;
     });
