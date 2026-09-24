@@ -11,9 +11,6 @@ import {
 } from 'class-validator';
 import { DATE_ONLY_PATTERN, PRIORITIES } from '../work-item-fields.const.js';
 
-const TYPES = ['bug', 'task'] as const;
-const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
-
 export class CreateWorkItemDto {
   @IsString()
   @IsNotEmpty()
@@ -23,14 +20,6 @@ export class CreateWorkItemDto {
   @IsOptional()
   @IsString()
   description?: string;
-
-  @IsIn(TYPES)
-  type!: (typeof TYPES)[number];
-
-  /** Only allowed when type is "bug" — enforced in WorkItemsService. */
-  @IsOptional()
-  @IsIn(SEVERITIES)
-  severity?: (typeof SEVERITIES)[number];
 
   @IsOptional()
   @IsIn(PRIORITIES)

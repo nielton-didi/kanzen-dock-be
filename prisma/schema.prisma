@@ -2,8 +2,9 @@
 // Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -93,7 +94,7 @@ model Project {
 
 // ============================================================================
 // LISTS - Sits between Project and WorkItem (Workspace -> Project -> List -> WorkItem)
-// A list is a plain container; work items carry their own type (bug/task).
+// A list is a plain container; its statuses and custom fields shape its work items.
 // ============================================================================
 model List {
   id         String   @id @default(cuid())
@@ -152,9 +153,7 @@ model WorkItem {
   title         String
   description   String?   @db.Text
   list_id       String
-  type          String // bug, task
   status_id     String
-  severity      String? // critical, high, medium, low — only set when type is "bug"
   priority      String    @default("none") // urgent, high, medium, low, none
   start_date    DateTime? @db.Date
   due_date      DateTime? @db.Date
@@ -187,20 +186,24 @@ model WorkItem {
 // kind: text, number, dropdown, multi_select, date, person, checkbox, url.
 // options: `[{ id, label, color }]` for dropdown / multi_select, `[]` otherwise.
 // Kind is fixed after creation; values live in WorkItem.custom_fields.
+// Deleting a field only sets deleted_at (recoverable): its values stay in
+// custom_fields, and it's treated as unknown until restored. Names are unique
+// among a list's active fields only (partial unique index).
 // ============================================================================
 model FieldDefinition {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   list_id    String
   name       String
   kind       String
-  options    Json     @default("[]")
-  position   Int // ordering within the list
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  options    Json      @default("[]")
+  position   Int // ordering within the list's active fields
+  deleted_at DateTime?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
 
   list List @relation(fields: [list_id], references: [id], onDelete: Cascade)
 
-  @@unique([list_id, name])
+  @@unique([list_id, name], where: raw("deleted_at IS NULL"))
   @@index([list_id])
   @@map("field_definitions")
 }
@@ -232,7 +235,7 @@ model Attachment {
 model WorkItemHistory {
   id           String   @id @default(cuid())
   work_item_id String
-  field_name   String // created, title, description, status, priority, start_date, due_date, assigned_to, severity, type, or cf:<field definition id>
+  field_name   String // created, title, description, status, priority, start_date, due_date, assigned_to, or cf:<field definition id>
   old_value    String?  @db.Text
   new_value    String?  @db.Text
   changed_by   String

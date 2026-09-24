@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +20,8 @@ import type { CreateFieldDefinitionDto } from './dto/create-field-definition.dto
 import type { ReorderFieldDefinitionsDto } from './dto/reorder-field-definitions.dto.js';
 import type { UpdateFieldDefinitionDto } from './dto/update-field-definition.dto.js';
 
+const NAME_TAKEN_MESSAGE = 'A field with this name already exists in this list';
+
 @Injectable()
 export class CustomFieldsService {
   constructor(
@@ -26,9 +29,16 @@ export class CustomFieldsService {
     private readonly listsService: ListsService,
   ) {}
 
-  async findAllByList(listId: string, userId: string) {
+  /** Active fields in display order, or with `deleted` the soft-deleted ones (most recently deleted first). */
+  async findAllByList(listId: string, userId: string, deleted = false) {
     await this.listsService.verifyAccess(listId, userId);
 
+    if (deleted) {
+      return this.prisma.fieldDefinition.findMany({
+        where: { list_id: listId, deleted_at: { not: null } },
+        orderBy: { deleted_at: 'desc' },
+      });
+    }
     return this.getDefinitions(listId);
   }
 
@@ -38,27 +48,21 @@ export class CustomFieldsService {
     const name = dto.name.trim();
     const options = buildOptions(dto.kind, dto.options);
 
-    return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.fieldDefinition.findMany({
-        where: { list_id: listId },
-        select: { name: true },
-      });
-      if (existing.some((field) => field.name === name)) {
-        throw new BadRequestException(
-          'A field with this name already exists in this list',
-        );
-      }
+    // Checked here for a clear message; the partial unique index on active
+    // (list_id, name) catches concurrent creates.
+    await this.assertNameAvailable(listId, name, BadRequestException);
 
-      return tx.fieldDefinition.create({
+    return this.withNameConflict(BadRequestException, async () =>
+      this.prisma.fieldDefinition.create({
         data: {
           list_id: listId,
           name,
           kind: dto.kind,
           options,
-          position: existing.length,
+          position: await this.nextPosition(listId),
         },
-      });
-    });
+      }),
+    );
   }
 
   async update(fieldId: string, dto: UpdateFieldDefinitionDto, userId: string) {
@@ -67,14 +71,7 @@ export class CustomFieldsService {
 
     const name = dto.name?.trim();
     if (name && name !== field.name) {
-      const duplicate = await this.prisma.fieldDefinition.findFirst({
-        where: { list_id: field.list_id, name, NOT: { id: fieldId } },
-      });
-      if (duplicate) {
-        throw new BadRequestException(
-          'A field with this name already exists in this list',
-        );
-      }
+      await this.assertNameAvailable(field.list_id, name, BadRequestException);
     }
 
     // Removed options leave stale ids in work item values; readers ignore
@@ -84,10 +81,12 @@ export class CustomFieldsService {
         ? buildOptions(field.kind, dto.options, optionsOf(field))
         : undefined;
 
-    return this.prisma.fieldDefinition.update({
-      where: { id: fieldId },
-      data: { name, options },
-    });
+    return this.withNameConflict(BadRequestException, () =>
+      this.prisma.fieldDefinition.update({
+        where: { id: fieldId },
+        data: { name, options },
+      }),
+    );
   }
 
   async reorder(
@@ -98,7 +97,7 @@ export class CustomFieldsService {
     await this.listsService.verifyListAdminAccess(listId, userId);
 
     const existing = await this.prisma.fieldDefinition.findMany({
-      where: { list_id: listId },
+      where: { list_id: listId, deleted_at: null },
       select: { id: true },
     });
     const existingIds = new Set(existing.map((field) => field.id));
@@ -131,17 +130,42 @@ export class CustomFieldsService {
     const field = await this.findFieldOrThrow(fieldId);
     await this.listsService.verifyListAdminAccess(field.list_id, userId);
 
-    // Strip the key from work items too, so filters and the GIN index never see
-    // values for a field that no longer exists. History rows are kept.
-    await this.prisma.$transaction([
-      this.prisma.$executeRaw`
-        UPDATE work_items
-        SET custom_fields = custom_fields - ${fieldId}::text, updated_at = now()
-        WHERE list_id = ${field.list_id} AND jsonb_exists(custom_fields, ${fieldId}::text)`,
-      this.prisma.fieldDefinition.delete({ where: { id: fieldId } }),
-    ]);
+    // Soft delete (D2): values stay in work items' custom_fields so a restore
+    // brings them back. Until then the field is unknown to writes and filters,
+    // and readers ignore its key. Permanent purge comes with CORE-20.
+    await this.prisma.fieldDefinition.update({
+      where: { id: fieldId },
+      data: { deleted_at: new Date() },
+    });
 
     return { message: 'Field deleted successfully' };
+  }
+
+  /** Brings back a soft-deleted field, with its values, at the end of the list's fields. */
+  async restore(fieldId: string, userId: string) {
+    const field = await this.prisma.fieldDefinition.findUnique({
+      where: { id: fieldId },
+    });
+    if (!field || field.deleted_at === null) {
+      throw new NotFoundException('Deleted field not found');
+    }
+    await this.listsService.verifyListAdminAccess(field.list_id, userId);
+
+    await this.assertNameAvailable(
+      field.list_id,
+      field.name,
+      ConflictException,
+    );
+
+    return this.withNameConflict(ConflictException, async () =>
+      this.prisma.fieldDefinition.update({
+        where: { id: fieldId },
+        data: {
+          deleted_at: null,
+          position: await this.nextPosition(field.list_id),
+        },
+      }),
+    );
   }
 
   /**
@@ -244,11 +268,53 @@ export class CustomFieldsService {
     return rows.map((row) => row.id);
   }
 
+  /** The list's active fields. Everything else treats deleted fields as unknown. */
   private getDefinitions(listId: string) {
     return this.prisma.fieldDefinition.findMany({
-      where: { list_id: listId },
+      where: { list_id: listId, deleted_at: null },
       orderBy: { position: 'asc' },
     });
+  }
+
+  private async nextPosition(listId: string): Promise<number> {
+    const { _max } = await this.prisma.fieldDefinition.aggregate({
+      where: { list_id: listId, deleted_at: null },
+      _max: { position: true },
+    });
+    return (_max.position ?? -1) + 1;
+  }
+
+  /** Names are unique among a list's active fields; a deleted field's name is free. */
+  private async assertNameAvailable(
+    listId: string,
+    name: string,
+    Exception: typeof BadRequestException | typeof ConflictException,
+  ) {
+    const duplicate = await this.prisma.fieldDefinition.findFirst({
+      where: { list_id: listId, name, deleted_at: null },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new Exception(NAME_TAKEN_MESSAGE);
+    }
+  }
+
+  /** Maps a lost race on the partial unique index (active list_id + name) to `Exception`. */
+  private async withNameConflict<T>(
+    Exception: typeof BadRequestException | typeof ConflictException,
+    write: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await write();
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new Exception(NAME_TAKEN_MESSAGE);
+      }
+      throw error;
+    }
   }
 
   private async getWorkspaceMemberIds(listId: string): Promise<Set<string>> {
@@ -276,13 +342,14 @@ export class CustomFieldsService {
     ]);
   }
 
+  /** An active field; a deleted one is not found until it's restored. */
   private async findFieldOrThrow(
     fieldId: string,
   ): Promise<FieldDefinitionModel> {
     const field = await this.prisma.fieldDefinition.findUnique({
       where: { id: fieldId },
     });
-    if (!field) {
+    if (!field || field.deleted_at !== null) {
       throw new NotFoundException('Field not found');
     }
     return field;

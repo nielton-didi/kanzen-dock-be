@@ -72,10 +72,6 @@ export class WorkItemsService {
   async create(listId: string, dto: CreateWorkItemDto, userId: string) {
     await this.listsService.verifyAccess(listId, userId);
 
-    if (dto.severity !== undefined && dto.type !== 'bug') {
-      throw new BadRequestException('severity is only allowed on bug work items');
-    }
-
     assertDateRange(dto.start_date ?? null, dto.due_date ?? null);
 
     let statusId: string;
@@ -102,9 +98,7 @@ export class WorkItemsService {
         title: dto.title,
         description: dto.description,
         list_id: listId,
-        type: dto.type,
         status_id: statusId,
-        severity: dto.severity,
         priority: dto.priority,
         start_date: dto.start_date ? fromDateOnly(dto.start_date) : null,
         due_date: dto.due_date ? fromDateOnly(dto.due_date) : null,
@@ -140,9 +134,7 @@ export class WorkItemsService {
       where: {
         list_id: listId,
         id: customFieldMatches ? { in: customFieldMatches } : undefined,
-        type: filters.type?.length ? { in: filters.type } : undefined,
         status_id: filters.status_id?.length ? { in: filters.status_id } : undefined,
-        severity: filters.severity?.length ? { in: filters.severity } : undefined,
         priority: filters.priority?.length ? { in: filters.priority } : undefined,
         assigned_to: filters.assigned_to?.length
           ? { in: filters.assigned_to }
@@ -185,11 +177,6 @@ export class WorkItemsService {
   async update(workItemId: string, dto: UpdateWorkItemDto, userId: string) {
     const workItem = await this.verifyAccess(workItemId, userId);
 
-    const effectiveType = dto.type ?? workItem.type;
-    if (dto.severity !== undefined && effectiveType !== 'bug') {
-      throw new BadRequestException('severity is only allowed on bug work items');
-    }
-
     // Compared and logged as `YYYY-MM-DD` strings; validated before anything is logged.
     const currentDates = {
       start_date: toDateOnly(workItem.start_date),
@@ -211,9 +198,7 @@ export class WorkItemsService {
     const trackableFields = [
       'title',
       'description',
-      'type',
       'priority',
-      'severity',
       'assigned_to',
     ] as const;
 
@@ -252,16 +237,6 @@ export class WorkItemsService {
         newValue: newStatus.name,
       });
       fieldsToUpdate.status_id = dto.status_id;
-    }
-
-    // Moving a work item away from "bug" clears any severity it was carrying.
-    if (
-      effectiveType !== 'bug' &&
-      workItem.severity !== null &&
-      dto.severity === undefined
-    ) {
-      history.push({ field: 'severity', oldValue: workItem.severity, newValue: null });
-      fieldsToUpdate.severity = null;
     }
 
     if (Object.keys(fieldsToUpdate).length === 0 && !customFieldPatch) {

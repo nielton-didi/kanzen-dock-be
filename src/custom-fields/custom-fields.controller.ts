@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Param, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import type { UserModel } from '../generated/prisma/models.js';
 import { CustomFieldsService } from './custom-fields.service.js';
@@ -20,5 +28,11 @@ export class CustomFieldsController {
   @Delete(':fieldId')
   remove(@Param('fieldId') fieldId: string, @CurrentUser() user: UserModel) {
     return this.customFieldsService.remove(fieldId, user.id);
+  }
+
+  @Post(':fieldId/restore')
+  @HttpCode(200)
+  restore(@Param('fieldId') fieldId: string, @CurrentUser() user: UserModel) {
+    return this.customFieldsService.restore(fieldId, user.id);
   }
 }
