@@ -14,8 +14,8 @@ import { AttachmentsService } from './attachments.service.js';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-@Controller('issues/:issueId/attachments')
-export class IssueAttachmentsController {
+@Controller('work-items/:workItemId/attachments')
+export class WorkItemAttachmentsController {
   constructor(private readonly attachmentsService: AttachmentsService) {}
 
   @Post()
@@ -23,7 +23,7 @@ export class IssueAttachmentsController {
     FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }),
   )
   upload(
-    @Param('issueId') issueId: string,
+    @Param('workItemId') workItemId: string,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: UserModel,
   ) {
@@ -31,11 +31,11 @@ export class IssueAttachmentsController {
       throw new BadRequestException('No file provided');
     }
 
-    return this.attachmentsService.uploadAttachment(issueId, file, user.id);
+    return this.attachmentsService.uploadAttachment(workItemId, file, user.id);
   }
 
   @Get()
-  findAll(@Param('issueId') issueId: string, @CurrentUser() user: UserModel) {
-    return this.attachmentsService.getIssueAttachments(issueId, user.id);
+  findAll(@Param('workItemId') workItemId: string, @CurrentUser() user: UserModel) {
+    return this.attachmentsService.getWorkItemAttachments(workItemId, user.id);
   }
 }

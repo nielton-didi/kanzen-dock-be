@@ -4,18 +4,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { cleanupIssueStorageFiles } from '../attachments/cleanup-issue-storage.util.js';
-import type { IssueModel } from '../generated/prisma/models.js';
+import { cleanupWorkItemStorageFiles } from '../attachments/cleanup-work-item-storage.util.js';
+import type { WorkItemModel } from '../generated/prisma/models.js';
 import { ListsService } from '../lists/lists.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { StatusesService } from '../statuses/statuses.service.js';
 import { SupabaseService } from '../supabase/supabase.service.js';
-import type { CreateIssueDto } from './dto/create-issue.dto.js';
-import type { FindIssuesQueryDto } from './dto/find-issues-query.dto.js';
-import type { UpdateIssueDto } from './dto/update-issue.dto.js';
-import { IssueHistoryService } from './issue-history.service.js';
+import type { CreateWorkItemDto } from './dto/create-work-item.dto.js';
+import type { FindWorkItemsQueryDto } from './dto/find-work-items-query.dto.js';
+import type { UpdateWorkItemDto } from './dto/update-work-item.dto.js';
+import { WorkItemHistoryService } from './work-item-history.service.js';
 
-const ISSUE_INCLUDE = {
+const WORK_ITEM_INCLUDE = {
   status: true,
   assignee: true,
   reporter: true,
@@ -23,40 +23,40 @@ const ISSUE_INCLUDE = {
 } as const;
 
 @Injectable()
-export class IssuesService {
+export class WorkItemsService {
   private readonly bucket: string;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly listsService: ListsService,
     private readonly statusesService: StatusesService,
-    private readonly issueHistory: IssueHistoryService,
+    private readonly workItemHistory: WorkItemHistoryService,
     private readonly supabase: SupabaseService,
     configService: ConfigService,
   ) {
     this.bucket = configService.getOrThrow<string>('SUPABASE_STORAGE_BUCKET');
   }
 
-  /** Verifies the user has access to the issue (via its list's project/workspace) and returns it. */
-  async verifyAccess(issueId: string, userId: string): Promise<IssueModel> {
-    const issue = await this.prisma.issue.findUnique({
-      where: { id: issueId },
+  /** Verifies the user has access to the work item (via its list's project/workspace) and returns it. */
+  async verifyAccess(workItemId: string, userId: string): Promise<WorkItemModel> {
+    const workItem = await this.prisma.workItem.findUnique({
+      where: { id: workItemId },
     });
 
-    if (!issue) {
-      throw new NotFoundException('Issue not found');
+    if (!workItem) {
+      throw new NotFoundException('Work item not found');
     }
 
-    await this.listsService.verifyAccess(issue.list_id, userId);
+    await this.listsService.verifyAccess(workItem.list_id, userId);
 
-    return issue;
+    return workItem;
   }
 
-  async create(listId: string, dto: CreateIssueDto, userId: string) {
+  async create(listId: string, dto: CreateWorkItemDto, userId: string) {
     await this.listsService.verifyAccess(listId, userId);
 
     if (dto.severity !== undefined && dto.type !== 'bug') {
-      throw new BadRequestException('severity is only allowed on bug issues');
+      throw new BadRequestException('severity is only allowed on bug work items');
     }
 
     let statusId: string;
@@ -74,7 +74,7 @@ export class IssuesService {
       statusId = (await this.statusesService.getDefaultForList(listId)).id;
     }
 
-    const issue = await this.prisma.issue.create({
+    const workItem = await this.prisma.workItem.create({
       data: {
         title: dto.title,
         description: dto.description,
@@ -85,28 +85,28 @@ export class IssuesService {
         priority: dto.priority,
         reported_by: userId,
       },
-      include: ISSUE_INCLUDE,
+      include: WORK_ITEM_INCLUDE,
     });
 
-    await this.issueHistory.logChange(
-      issue.id,
+    await this.workItemHistory.logChange(
+      workItem.id,
       'created',
       null,
-      JSON.stringify({ title: issue.title, description: issue.description }),
+      JSON.stringify({ title: workItem.title, description: workItem.description }),
       userId,
     );
 
-    return issue;
+    return workItem;
   }
 
   async findAllByList(
     listId: string,
     userId: string,
-    filters: FindIssuesQueryDto,
+    filters: FindWorkItemsQueryDto,
   ) {
     await this.listsService.verifyAccess(listId, userId);
 
-    return this.prisma.issue.findMany({
+    return this.prisma.workItem.findMany({
       where: {
         list_id: listId,
         type: filters.type?.length ? { in: filters.type } : undefined,
@@ -117,16 +117,16 @@ export class IssuesService {
           ? { in: filters.assigned_to }
           : undefined,
       },
-      include: ISSUE_INCLUDE,
+      include: WORK_ITEM_INCLUDE,
       orderBy: { created_at: 'desc' },
     });
   }
 
-  async findOne(issueId: string, userId: string) {
-    const issue = await this.prisma.issue.findUnique({
-      where: { id: issueId },
+  async findOne(workItemId: string, userId: string) {
+    const workItem = await this.prisma.workItem.findUnique({
+      where: { id: workItemId },
       include: {
-        ...ISSUE_INCLUDE,
+        ...WORK_ITEM_INCLUDE,
         list: { include: { project: { include: { workspace: true } } } },
         history: {
           include: { changer: true },
@@ -135,21 +135,21 @@ export class IssuesService {
       },
     });
 
-    if (!issue) {
-      throw new NotFoundException('Issue not found');
+    if (!workItem) {
+      throw new NotFoundException('Work item not found');
     }
 
-    await this.listsService.verifyAccess(issue.list_id, userId);
+    await this.listsService.verifyAccess(workItem.list_id, userId);
 
-    return issue;
+    return workItem;
   }
 
-  async update(issueId: string, dto: UpdateIssueDto, userId: string) {
-    const issue = await this.verifyAccess(issueId, userId);
+  async update(workItemId: string, dto: UpdateWorkItemDto, userId: string) {
+    const workItem = await this.verifyAccess(workItemId, userId);
 
-    const effectiveType = dto.type ?? issue.type;
+    const effectiveType = dto.type ?? workItem.type;
     if (dto.severity !== undefined && effectiveType !== 'bug') {
-      throw new BadRequestException('severity is only allowed on bug issues');
+      throw new BadRequestException('severity is only allowed on bug work items');
     }
 
     const fieldsToUpdate: Record<string, string | null> = {};
@@ -165,11 +165,11 @@ export class IssuesService {
 
     for (const field of trackableFields) {
       const newValue = dto[field];
-      if (newValue !== undefined && newValue !== issue[field]) {
-        await this.issueHistory.logChange(
-          issueId,
+      if (newValue !== undefined && newValue !== workItem[field]) {
+        await this.workItemHistory.logChange(
+          workItemId,
           field,
-          issue[field],
+          workItem[field],
           newValue,
           userId,
         );
@@ -178,20 +178,20 @@ export class IssuesService {
     }
 
     // status is tracked by id but logged by name (history stores plain-text labels, not ids).
-    if (dto.status_id !== undefined && dto.status_id !== issue.status_id) {
+    if (dto.status_id !== undefined && dto.status_id !== workItem.status_id) {
       const [oldStatus, newStatus] = await Promise.all([
-        this.prisma.status.findUnique({ where: { id: issue.status_id } }),
+        this.prisma.status.findUnique({ where: { id: workItem.status_id } }),
         this.prisma.status.findUnique({ where: { id: dto.status_id } }),
       ]);
 
-      if (!newStatus || newStatus.list_id !== issue.list_id) {
+      if (!newStatus || newStatus.list_id !== workItem.list_id) {
         throw new BadRequestException(
-          'status_id must be a status belonging to this issue’s list',
+          'status_id must be a status belonging to this work item’s list',
         );
       }
 
-      await this.issueHistory.logChange(
-        issueId,
+      await this.workItemHistory.logChange(
+        workItemId,
         'status',
         oldStatus?.name ?? null,
         newStatus.name,
@@ -200,16 +200,16 @@ export class IssuesService {
       fieldsToUpdate.status_id = dto.status_id;
     }
 
-    // Moving an issue away from "bug" clears any severity it was carrying.
+    // Moving a work item away from "bug" clears any severity it was carrying.
     if (
       effectiveType !== 'bug' &&
-      issue.severity !== null &&
+      workItem.severity !== null &&
       dto.severity === undefined
     ) {
-      await this.issueHistory.logChange(
-        issueId,
+      await this.workItemHistory.logChange(
+        workItemId,
         'severity',
-        issue.severity,
+        workItem.severity,
         null,
         userId,
       );
@@ -217,33 +217,33 @@ export class IssuesService {
     }
 
     if (Object.keys(fieldsToUpdate).length === 0) {
-      return this.prisma.issue.findUnique({
-        where: { id: issueId },
-        include: ISSUE_INCLUDE,
+      return this.prisma.workItem.findUnique({
+        where: { id: workItemId },
+        include: WORK_ITEM_INCLUDE,
       });
     }
 
-    return this.prisma.issue.update({
-      where: { id: issueId },
+    return this.prisma.workItem.update({
+      where: { id: workItemId },
       data: fieldsToUpdate,
-      include: ISSUE_INCLUDE,
+      include: WORK_ITEM_INCLUDE,
     });
   }
 
-  async getHistory(issueId: string, userId: string) {
-    await this.verifyAccess(issueId, userId);
+  async getHistory(workItemId: string, userId: string) {
+    await this.verifyAccess(workItemId, userId);
 
-    return this.issueHistory.getIssueHistory(issueId);
+    return this.workItemHistory.getWorkItemHistory(workItemId);
   }
 
-  async remove(issueId: string, userId: string) {
-    await this.verifyAccess(issueId, userId);
+  async remove(workItemId: string, userId: string) {
+    await this.verifyAccess(workItemId, userId);
 
-    await cleanupIssueStorageFiles(this.supabase, this.bucket, [issueId]);
+    await cleanupWorkItemStorageFiles(this.supabase, this.bucket, [workItemId]);
 
     // Cascades attachments and history rows in the DB (see schema onDelete: Cascade).
-    await this.prisma.issue.delete({ where: { id: issueId } });
+    await this.prisma.workItem.delete({ where: { id: workItemId } });
 
-    return { message: 'Issue deleted successfully' };
+    return { message: 'Work item deleted successfully' };
   }
 }

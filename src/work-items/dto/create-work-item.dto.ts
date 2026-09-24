@@ -10,7 +10,7 @@ const TYPES = ['bug', 'task'] as const;
 const SEVERITIES = ['critical', 'high', 'medium', 'low'] as const;
 const PRIORITIES = ['high', 'medium', 'low'] as const;
 
-export class CreateIssueDto {
+export class CreateWorkItemDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
@@ -23,7 +23,7 @@ export class CreateIssueDto {
   @IsIn(TYPES)
   type!: (typeof TYPES)[number];
 
-  /** Only allowed when type is "bug" — enforced in IssuesService. */
+  /** Only allowed when type is "bug" — enforced in WorkItemsService. */
   @IsOptional()
   @IsIn(SEVERITIES)
   severity?: (typeof SEVERITIES)[number];
@@ -32,7 +32,7 @@ export class CreateIssueDto {
   @IsIn(PRIORITIES)
   priority?: (typeof PRIORITIES)[number];
 
-  /** Defaults to the list's default status when omitted — checked in IssuesService (a fixed @IsIn can't validate per-list values). */
+  /** Defaults to the list's default status when omitted — checked in WorkItemsService (a fixed @IsIn can't validate per-list values). */
   @IsOptional()
   @IsString()
   @IsNotEmpty()

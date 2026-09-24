@@ -1,4 +1,4 @@
-// Prisma schema for Kanzen Dock (bug tracking app)
+// Prisma schema for Kanzen Dock (general work management)
 // Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
@@ -21,13 +21,13 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  owned_workspaces  Workspace[]       @relation("WorkspaceOwner")
-  workspace_members WorkspaceMember[]
-  reported_issues   Issue[]           @relation("IssueReporter")
-  assigned_issues   Issue[]           @relation("IssueAssignee")
-  created_projects  Project[]         @relation("ProjectCreator")
-  attachments       Attachment[]
-  issue_history_logs IssueHistory[]
+  owned_workspaces       Workspace[]       @relation("WorkspaceOwner")
+  workspace_members      WorkspaceMember[]
+  reported_work_items    WorkItem[]        @relation("WorkItemReporter")
+  assigned_work_items    WorkItem[]        @relation("WorkItemAssignee")
+  created_projects       Project[]         @relation("ProjectCreator")
+  attachments            Attachment[]
+  work_item_history_logs WorkItemHistory[]
 
   @@map("users")
 }
@@ -92,8 +92,8 @@ model Project {
 }
 
 // ============================================================================
-// LISTS - Sits between Project and Issue (Workspace -> Project -> List -> Issue)
-// A list is a plain container; issues carry their own type (bug/task).
+// LISTS - Sits between Project and WorkItem (Workspace -> Project -> List -> WorkItem)
+// A list is a plain container; work items carry their own type (bug/task).
 // ============================================================================
 model List {
   id         String   @id @default(cuid())
@@ -102,16 +102,16 @@ model List {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  project  Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  issues   Issue[]
-  statuses Status[]
+  project    Project    @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  work_items WorkItem[]
+  statuses   Status[]
 
   @@index([project_id])
   @@map("lists")
 }
 
 // ============================================================================
-// STATUSES - Per-list, user-customizable issue statuses, grouped into 4 fixed
+// STATUSES - Per-list, user-customizable work item statuses, grouped into 4 fixed
 // categories. Category is a real enum (unlike everything else in this schema)
 // because it is genuinely fixed and must never be user-editable; name/color
 // stay String since those ARE user-editable. Ordering within a list is
@@ -134,8 +134,8 @@ model Status {
   created_at DateTime       @default(now())
   updated_at DateTime       @updatedAt
 
-  list   List    @relation(fields: [list_id], references: [id], onDelete: Cascade)
-  issues Issue[]
+  list       List       @relation(fields: [list_id], references: [id], onDelete: Cascade)
+  work_items WorkItem[]
 
   @@unique([list_id, category, position])
   @@unique([list_id, name])
@@ -144,9 +144,9 @@ model Status {
 }
 
 // ============================================================================
-// ISSUES (Bugs/Tasks) - Core entity, belongs to a List
+// WORK_ITEMS - Core entity, belongs to a List
 // ============================================================================
-model Issue {
+model WorkItem {
   id          String   @id @default(cuid())
   title       String
   description String?  @db.Text
@@ -160,58 +160,58 @@ model Issue {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  list        List           @relation(fields: [list_id], references: [id], onDelete: Cascade)
-  status      Status         @relation(fields: [status_id], references: [id], onDelete: Restrict)
-  assignee    User?          @relation("IssueAssignee", fields: [assigned_to], references: [id], onDelete: SetNull)
-  reporter    User           @relation("IssueReporter", fields: [reported_by], references: [id], onDelete: Restrict)
+  list        List              @relation(fields: [list_id], references: [id], onDelete: Cascade)
+  status      Status            @relation(fields: [status_id], references: [id], onDelete: Restrict)
+  assignee    User?             @relation("WorkItemAssignee", fields: [assigned_to], references: [id], onDelete: SetNull)
+  reporter    User              @relation("WorkItemReporter", fields: [reported_by], references: [id], onDelete: Restrict)
   attachments Attachment[]
-  history     IssueHistory[]
+  history     WorkItemHistory[]
 
   @@index([list_id])
   @@index([status_id])
   @@index([assigned_to])
   @@index([reported_by])
-  @@map("issues")
+  @@map("work_items")
 }
 
 // ============================================================================
-// ATTACHMENTS - File uploads for issues (images, documents, etc.)
+// ATTACHMENTS - File uploads for work items (images, documents, etc.)
 // ============================================================================
 model Attachment {
-  id          String   @id @default(cuid())
-  issue_id    String
-  file_url    String
-  file_name   String
-  file_size   Int?
-  file_type   String?
-  uploaded_by String
-  uploaded_at DateTime @default(now())
+  id           String   @id @default(cuid())
+  work_item_id String
+  file_url     String
+  file_name    String
+  file_size    Int?
+  file_type    String?
+  uploaded_by  String
+  uploaded_at  DateTime @default(now())
 
-  issue    Issue @relation(fields: [issue_id], references: [id], onDelete: Cascade)
-  uploader User  @relation(fields: [uploaded_by], references: [id], onDelete: Restrict)
+  work_item WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
+  uploader  User     @relation(fields: [uploaded_by], references: [id], onDelete: Restrict)
 
-  @@index([issue_id])
+  @@index([work_item_id])
   @@index([uploaded_by])
   @@map("attachments")
 }
 
 // ============================================================================
-// ISSUE_HISTORY - Complete audit trail of all changes
+// WORK_ITEM_HISTORY - Complete audit trail of all changes
 // ============================================================================
-model IssueHistory {
-  id         String   @id @default(cuid())
-  issue_id   String
-  field_name String // title, description, status, priority, assigned_to, severity, type
-  old_value  String?  @db.Text
-  new_value  String?  @db.Text
-  changed_by String
-  changed_at DateTime @default(now())
+model WorkItemHistory {
+  id           String   @id @default(cuid())
+  work_item_id String
+  field_name   String // title, description, status, priority, assigned_to, severity, type
+  old_value    String?  @db.Text
+  new_value    String?  @db.Text
+  changed_by   String
+  changed_at   DateTime @default(now())
 
-  issue   Issue @relation(fields: [issue_id], references: [id], onDelete: Cascade)
-  changer User  @relation(fields: [changed_by], references: [id], onDelete: Restrict)
+  work_item WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
+  changer   User     @relation(fields: [changed_by], references: [id], onDelete: Restrict)
 
-  @@index([issue_id])
+  @@index([work_item_id])
   @@index([changed_by])
   @@index([changed_at])
-  @@map("issue_history")
+  @@map("work_item_history")
 }

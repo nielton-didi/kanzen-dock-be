@@ -13,7 +13,7 @@ function toArray({ value }: { value: unknown }): unknown {
   return Array.isArray(value) ? value : [value];
 }
 
-export class FindIssuesQueryDto {
+export class FindWorkItemsQueryDto {
   @IsOptional()
   @Transform(toArray)
   @IsArray()

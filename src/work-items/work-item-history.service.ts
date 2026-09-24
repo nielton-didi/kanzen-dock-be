@@ -2,19 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
-export class IssueHistoryService {
+export class WorkItemHistoryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async logChange(
-    issueId: string,
+    workItemId: string,
     fieldName: string,
     oldValue: string | null,
     newValue: string | null,
     changedBy: string,
   ) {
-    return this.prisma.issueHistory.create({
+    return this.prisma.workItemHistory.create({
       data: {
-        issue_id: issueId,
+        work_item_id: workItemId,
         field_name: fieldName,
         old_value: oldValue,
         new_value: newValue,
@@ -23,9 +23,9 @@ export class IssueHistoryService {
     });
   }
 
-  async getIssueHistory(issueId: string) {
-    return this.prisma.issueHistory.findMany({
-      where: { issue_id: issueId },
+  async getWorkItemHistory(workItemId: string) {
+    return this.prisma.workItemHistory.findMany({
+      where: { work_item_id: workItemId },
       include: { changer: true },
       orderBy: { changed_at: 'desc' },
     });
