@@ -147,18 +147,20 @@ model Status {
 // WORK_ITEMS - Core entity, belongs to a List
 // ============================================================================
 model WorkItem {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
-  description String?  @db.Text
+  description String?   @db.Text
   list_id     String
   type        String // bug, task
   status_id   String
   severity    String? // critical, high, medium, low — only set when type is "bug"
-  priority    String   @default("medium") // high, medium, low
+  priority    String    @default("none") // urgent, high, medium, low, none
+  start_date  DateTime? @db.Date
+  due_date    DateTime? @db.Date
   assigned_to String?
   reported_by String
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
 
   list        List              @relation(fields: [list_id], references: [id], onDelete: Cascade)
   status      Status            @relation(fields: [status_id], references: [id], onDelete: Restrict)
@@ -201,7 +203,7 @@ model Attachment {
 model WorkItemHistory {
   id           String   @id @default(cuid())
   work_item_id String
-  field_name   String // title, description, status, priority, assigned_to, severity, type
+  field_name   String // created, title, description, status, priority, start_date, due_date, assigned_to, severity, type
   old_value    String?  @db.Text
   new_value    String?  @db.Text
   changed_by   String

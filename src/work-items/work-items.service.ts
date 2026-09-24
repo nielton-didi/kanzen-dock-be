@@ -14,6 +14,14 @@ import type { CreateWorkItemDto } from './dto/create-work-item.dto.js';
 import type { FindWorkItemsQueryDto } from './dto/find-work-items-query.dto.js';
 import type { UpdateWorkItemDto } from './dto/update-work-item.dto.js';
 import { WorkItemHistoryService } from './work-item-history.service.js';
+import { fromDateOnly, toDateOnly } from './work-item-fields.const.js';
+
+/** Rejects a start date after the due date. Both are `YYYY-MM-DD`, so string order is date order. */
+function assertDateRange(startDate: string | null, dueDate: string | null) {
+  if (startDate && dueDate && startDate > dueDate) {
+    throw new BadRequestException('start_date must not be after due_date');
+  }
+}
 
 const WORK_ITEM_INCLUDE = {
   status: true,
@@ -59,6 +67,8 @@ export class WorkItemsService {
       throw new BadRequestException('severity is only allowed on bug work items');
     }
 
+    assertDateRange(dto.start_date ?? null, dto.due_date ?? null);
+
     let statusId: string;
     if (dto.status_id !== undefined) {
       const status = await this.prisma.status.findUnique({
@@ -83,6 +93,8 @@ export class WorkItemsService {
         status_id: statusId,
         severity: dto.severity,
         priority: dto.priority,
+        start_date: dto.start_date ? fromDateOnly(dto.start_date) : null,
+        due_date: dto.due_date ? fromDateOnly(dto.due_date) : null,
         reported_by: userId,
       },
       include: WORK_ITEM_INCLUDE,
@@ -116,6 +128,13 @@ export class WorkItemsService {
         assigned_to: filters.assigned_to?.length
           ? { in: filters.assigned_to }
           : undefined,
+        due_date:
+          filters.due_from || filters.due_to
+            ? {
+                gte: filters.due_from ? fromDateOnly(filters.due_from) : undefined,
+                lte: filters.due_to ? fromDateOnly(filters.due_to) : undefined,
+              }
+            : undefined,
       },
       include: WORK_ITEM_INCLUDE,
       orderBy: { created_at: 'desc' },
@@ -152,7 +171,17 @@ export class WorkItemsService {
       throw new BadRequestException('severity is only allowed on bug work items');
     }
 
-    const fieldsToUpdate: Record<string, string | null> = {};
+    // Compared and logged as `YYYY-MM-DD` strings; validated before anything is logged.
+    const currentDates = {
+      start_date: toDateOnly(workItem.start_date),
+      due_date: toDateOnly(workItem.due_date),
+    };
+    assertDateRange(
+      dto.start_date !== undefined ? dto.start_date : currentDates.start_date,
+      dto.due_date !== undefined ? dto.due_date : currentDates.due_date,
+    );
+
+    const fieldsToUpdate: Record<string, string | Date | null> = {};
 
     const trackableFields = [
       'title',
@@ -174,6 +203,20 @@ export class WorkItemsService {
           userId,
         );
         fieldsToUpdate[field] = newValue;
+      }
+    }
+
+    for (const field of ['start_date', 'due_date'] as const) {
+      const newValue = dto[field];
+      if (newValue !== undefined && newValue !== currentDates[field]) {
+        await this.workItemHistory.logChange(
+          workItemId,
+          field,
+          currentDates[field],
+          newValue,
+          userId,
+        );
+        fieldsToUpdate[field] = newValue === null ? null : fromDateOnly(newValue);
       }
     }
 
