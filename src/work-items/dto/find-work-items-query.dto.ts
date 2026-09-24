@@ -62,4 +62,15 @@ export class FindWorkItemsQueryDto {
   @Matches(DATE_ONLY_PATTERN, { message: '$property must be a YYYY-MM-DD date' })
   @IsISO8601({ strict: true })
   due_to?: string;
+
+  /**
+   * Custom field filters, `<fieldId>:<value>` (repeat for more). Values for the
+   * same field are OR'd, different fields AND'd. dropdown / multi_select take an
+   * option id, person a user id, checkbox `true` / `false`.
+   */
+  @IsOptional()
+  @Transform(toArray)
+  @IsArray()
+  @IsString({ each: true })
+  cf?: string[];
 }

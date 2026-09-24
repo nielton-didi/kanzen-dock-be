@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { cleanupWorkItemStorageFiles } from '../attachments/cleanup-work-item-storage.util.js';
+import { customFieldHistoryName } from '../custom-fields/custom-field-values.js';
+import { CustomFieldsService } from '../custom-fields/custom-fields.service.js';
 import type { WorkItemModel } from '../generated/prisma/models.js';
 import { ListsService } from '../lists/lists.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -23,6 +25,12 @@ function assertDateRange(startDate: string | null, dueDate: string | null) {
   }
 }
 
+type HistoryEntry = {
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+};
+
 const WORK_ITEM_INCLUDE = {
   status: true,
   assignee: true,
@@ -38,6 +46,7 @@ export class WorkItemsService {
     private readonly prisma: PrismaService,
     private readonly listsService: ListsService,
     private readonly statusesService: StatusesService,
+    private readonly customFieldsService: CustomFieldsService,
     private readonly workItemHistory: WorkItemHistoryService,
     private readonly supabase: SupabaseService,
     configService: ConfigService,
@@ -84,6 +93,10 @@ export class WorkItemsService {
       statusId = (await this.statusesService.getDefaultForList(listId)).id;
     }
 
+    const customFields = dto.custom_fields
+      ? (await this.customFieldsService.validatePatch(listId, dto.custom_fields)).set
+      : {};
+
     const workItem = await this.prisma.workItem.create({
       data: {
         title: dto.title,
@@ -95,6 +108,7 @@ export class WorkItemsService {
         priority: dto.priority,
         start_date: dto.start_date ? fromDateOnly(dto.start_date) : null,
         due_date: dto.due_date ? fromDateOnly(dto.due_date) : null,
+        custom_fields: customFields,
         reported_by: userId,
       },
       include: WORK_ITEM_INCLUDE,
@@ -118,9 +132,14 @@ export class WorkItemsService {
   ) {
     await this.listsService.verifyAccess(listId, userId);
 
+    const customFieldMatches = filters.cf?.length
+      ? await this.customFieldsService.findMatchingWorkItemIds(listId, filters.cf)
+      : undefined;
+
     return this.prisma.workItem.findMany({
       where: {
         list_id: listId,
+        id: customFieldMatches ? { in: customFieldMatches } : undefined,
         type: filters.type?.length ? { in: filters.type } : undefined,
         status_id: filters.status_id?.length ? { in: filters.status_id } : undefined,
         severity: filters.severity?.length ? { in: filters.severity } : undefined,
@@ -181,7 +200,13 @@ export class WorkItemsService {
       dto.due_date !== undefined ? dto.due_date : currentDates.due_date,
     );
 
+    const customFieldPatch = dto.custom_fields
+      ? await this.customFieldsService.validatePatch(workItem.list_id, dto.custom_fields)
+      : undefined;
+
     const fieldsToUpdate: Record<string, string | Date | null> = {};
+    // Written in the same transaction as the update, so history never records a change that didn't apply.
+    const history: HistoryEntry[] = [];
 
     const trackableFields = [
       'title',
@@ -195,13 +220,7 @@ export class WorkItemsService {
     for (const field of trackableFields) {
       const newValue = dto[field];
       if (newValue !== undefined && newValue !== workItem[field]) {
-        await this.workItemHistory.logChange(
-          workItemId,
-          field,
-          workItem[field],
-          newValue,
-          userId,
-        );
+        history.push({ field, oldValue: workItem[field], newValue });
         fieldsToUpdate[field] = newValue;
       }
     }
@@ -209,13 +228,7 @@ export class WorkItemsService {
     for (const field of ['start_date', 'due_date'] as const) {
       const newValue = dto[field];
       if (newValue !== undefined && newValue !== currentDates[field]) {
-        await this.workItemHistory.logChange(
-          workItemId,
-          field,
-          currentDates[field],
-          newValue,
-          userId,
-        );
+        history.push({ field, oldValue: currentDates[field], newValue });
         fieldsToUpdate[field] = newValue === null ? null : fromDateOnly(newValue);
       }
     }
@@ -233,13 +246,11 @@ export class WorkItemsService {
         );
       }
 
-      await this.workItemHistory.logChange(
-        workItemId,
-        'status',
-        oldStatus?.name ?? null,
-        newStatus.name,
-        userId,
-      );
+      history.push({
+        field: 'status',
+        oldValue: oldStatus?.name ?? null,
+        newValue: newStatus.name,
+      });
       fieldsToUpdate.status_id = dto.status_id;
     }
 
@@ -249,27 +260,51 @@ export class WorkItemsService {
       workItem.severity !== null &&
       dto.severity === undefined
     ) {
-      await this.workItemHistory.logChange(
-        workItemId,
-        'severity',
-        workItem.severity,
-        null,
-        userId,
-      );
+      history.push({ field: 'severity', oldValue: workItem.severity, newValue: null });
       fieldsToUpdate.severity = null;
     }
 
-    if (Object.keys(fieldsToUpdate).length === 0) {
+    if (Object.keys(fieldsToUpdate).length === 0 && !customFieldPatch) {
       return this.prisma.workItem.findUnique({
         where: { id: workItemId },
         include: WORK_ITEM_INCLUDE,
       });
     }
 
-    return this.prisma.workItem.update({
-      where: { id: workItemId },
-      data: fieldsToUpdate,
-      include: WORK_ITEM_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      if (customFieldPatch) {
+        // Custom fields are logged as JSON values (option ids, not labels), one row per changed key.
+        const changes = await this.customFieldsService.applyPatch(
+          tx,
+          workItemId,
+          customFieldPatch,
+        );
+        for (const change of changes) {
+          history.push({
+            field: customFieldHistoryName(change.fieldId),
+            oldValue: change.oldValue === null ? null : JSON.stringify(change.oldValue),
+            newValue: change.newValue === null ? null : JSON.stringify(change.newValue),
+          });
+        }
+      }
+
+      if (history.length) {
+        await tx.workItemHistory.createMany({
+          data: history.map((entry) => ({
+            work_item_id: workItemId,
+            field_name: entry.field,
+            old_value: entry.oldValue,
+            new_value: entry.newValue,
+            changed_by: userId,
+          })),
+        });
+      }
+
+      return tx.workItem.update({
+        where: { id: workItemId },
+        data: fieldsToUpdate,
+        include: WORK_ITEM_INCLUDE,
+      });
     });
   }
 

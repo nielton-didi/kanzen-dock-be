@@ -5,6 +5,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AttachmentsModule } from './attachments/attachments.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { CustomFieldsModule } from './custom-fields/custom-fields.module.js';
 import { JwtGuard } from './common/guards/jwt.guard.js';
 import { WorkItemsModule } from './work-items/work-items.module.js';
 import { ListsModule } from './lists/lists.module.js';
@@ -29,6 +30,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module.js';
     ProjectsModule,
     ListsModule,
     StatusesModule,
+    CustomFieldsModule,
     WorkItemsModule,
     AttachmentsModule,
   ],

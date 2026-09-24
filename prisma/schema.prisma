@@ -102,9 +102,10 @@ model List {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  project    Project    @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  project    Project           @relation(fields: [project_id], references: [id], onDelete: Cascade)
   work_items WorkItem[]
   statuses   Status[]
+  fields     FieldDefinition[]
 
   @@index([project_id])
   @@map("lists")
@@ -147,20 +148,24 @@ model Status {
 // WORK_ITEMS - Core entity, belongs to a List
 // ============================================================================
 model WorkItem {
-  id          String    @id @default(cuid())
-  title       String
-  description String?   @db.Text
-  list_id     String
-  type        String // bug, task
-  status_id   String
-  severity    String? // critical, high, medium, low — only set when type is "bug"
-  priority    String    @default("none") // urgent, high, medium, low, none
-  start_date  DateTime? @db.Date
-  due_date    DateTime? @db.Date
-  assigned_to String?
-  reported_by String
-  created_at  DateTime  @default(now())
-  updated_at  DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  title         String
+  description   String?   @db.Text
+  list_id       String
+  type          String // bug, task
+  status_id     String
+  severity      String? // critical, high, medium, low — only set when type is "bug"
+  priority      String    @default("none") // urgent, high, medium, low, none
+  start_date    DateTime? @db.Date
+  due_date      DateTime? @db.Date
+  assigned_to   String?
+  reported_by   String
+  // Custom field values keyed by FieldDefinition id. Validated only in the API
+  // (src/custom-fields/custom-field-values.ts) and always updated as a partial
+  // merge (`custom_fields || patch`), never read-modify-write of the whole object.
+  custom_fields Json      @default("{}")
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
 
   list        List              @relation(fields: [list_id], references: [id], onDelete: Cascade)
   status      Status            @relation(fields: [status_id], references: [id], onDelete: Restrict)
@@ -173,7 +178,31 @@ model WorkItem {
   @@index([status_id])
   @@index([assigned_to])
   @@index([reported_by])
+  @@index([custom_fields(ops: JsonbPathOps)], type: Gin)
   @@map("work_items")
+}
+
+// ============================================================================
+// FIELD_DEFINITIONS - Per-list custom fields (see product-requirements D2).
+// kind: text, number, dropdown, multi_select, date, person, checkbox, url.
+// options: `[{ id, label, color }]` for dropdown / multi_select, `[]` otherwise.
+// Kind is fixed after creation; values live in WorkItem.custom_fields.
+// ============================================================================
+model FieldDefinition {
+  id         String   @id @default(cuid())
+  list_id    String
+  name       String
+  kind       String
+  options    Json     @default("[]")
+  position   Int // ordering within the list
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  list List @relation(fields: [list_id], references: [id], onDelete: Cascade)
+
+  @@unique([list_id, name])
+  @@index([list_id])
+  @@map("field_definitions")
 }
 
 // ============================================================================
@@ -203,7 +232,7 @@ model Attachment {
 model WorkItemHistory {
   id           String   @id @default(cuid())
   work_item_id String
-  field_name   String // created, title, description, status, priority, start_date, due_date, assigned_to, severity, type
+  field_name   String // created, title, description, status, priority, start_date, due_date, assigned_to, severity, type, or cf:<field definition id>
   old_value    String?  @db.Text
   new_value    String?  @db.Text
   changed_by   String

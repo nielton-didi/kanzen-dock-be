@@ -2,6 +2,7 @@ import {
   IsISO8601,
   IsIn,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   Matches,
@@ -54,4 +55,9 @@ export class CreateWorkItemDto {
   @IsString()
   @IsNotEmpty()
   status_id?: string;
+
+  /** Values keyed by custom field id; `null` unsets. Validated against the list's fields in custom-field-values.ts. */
+  @IsOptional()
+  @IsObject()
+  custom_fields?: Record<string, unknown>;
 }
