@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { CustomFieldsModule } from './custom-fields/custom-fields.module.js';
 import { JwtGuard } from './common/guards/jwt.guard.js';
 import { WorkItemsModule } from './work-items/work-items.module.js';
+import { ListPreferencesModule } from './list-preferences/list-preferences.module.js';
 import { ListsModule } from './lists/lists.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { ProjectsModule } from './projects/projects.module.js';
@@ -31,6 +32,7 @@ import { WorkspacesModule } from './workspaces/workspaces.module.js';
     ListsModule,
     StatusesModule,
     CustomFieldsModule,
+    ListPreferencesModule,
     WorkItemsModule,
     AttachmentsModule,
   ],
